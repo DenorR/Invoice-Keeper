@@ -6,7 +6,16 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Any, Generic, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    HttpUrl,
+    UrlConstraints,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from app.domain.money import Currency, from_minor
 from app.domain.occurrence_state import OccurrenceState, compute_state
@@ -22,7 +31,11 @@ Amount = Annotated[
 ]
 Login = Annotated[str, Field(min_length=3, max_length=64, pattern=r"^[A-Za-z0-9_.\-]+$", examples=["ivan"])]
 Password = Annotated[str, Field(min_length=6, max_length=128, examples=["secret123"])]
-PaymentName = Annotated[str, Field(min_length=1, max_length=200, examples=["Аренда офиса"])]
+NO_CONTROL_CHARS = r"^[^\x00-\x1F\x7F]*$"
+PaymentName = Annotated[
+    str, Field(min_length=1, max_length=200, pattern=NO_CONTROL_CHARS, examples=["Аренда офиса"])
+]
+PersonName = Annotated[str, Field(max_length=128, pattern=NO_CONTROL_CHARS, examples=["Иван Петров"])]
 
 
 class StrictModel(BaseModel):
@@ -88,13 +101,13 @@ class LoginResponse(BaseModel):
 class UserCreate(StrictModel):
     login: Login
     password: Password
-    name: str | None = Field(default=None, max_length=128, examples=["Иван Петров"])
+    name: PersonName | None = None
 
 
 class UserUpdate(StrictModel):
     login: Login | None = None
     password: Password | None = None
-    name: str | None = Field(default=None, max_length=128)
+    name: PersonName | None = None
 
 
 # --- периоды -------------------------------------------------------------
@@ -174,7 +187,9 @@ class OccurrenceUpdate(StrictModel):
 
     paid: bool | None = None
     paid_at: date | None = Field(default=None, description="Фактическая дата оплаты, не позже сегодняшнего дня")
-    receipt_url: HttpUrl | None = Field(default=None, description="Ссылка на чек или платёжку")
+    receipt_url: Annotated[HttpUrl, UrlConstraints(max_length=2048)] | None = Field(
+        default=None, description="Ссылка на чек или платёжку (только http/https)"
+    )
 
 
 # --- регулярные платежи ---------------------------------------------------

@@ -521,7 +521,7 @@ export interface components {
             paid_at?: string | null;
             /**
              * Receipt Url
-             * @description Ссылка на чек или платёжку
+             * @description Ссылка на чек или платёжку (только http/https)
              */
             receipt_url?: string | null;
         };
@@ -685,10 +685,7 @@ export interface components {
              * @example secret123
              */
             password: string;
-            /**
-             * Name
-             * @example Иван Петров
-             */
+            /** Name */
             name?: string | null;
         };
         /** UserOut */

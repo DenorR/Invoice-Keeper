@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     reminder_check_interval_seconds: int = Field(default=60, ge=5)
 
     seed_demo_data: bool = True
+    # Пароли демо-пользователей. По умолчанию — публичные из README (для локального запуска);
+    # на сервере, доступном из интернета, задайте свои.
+    demo_user_password: SecretStr = Field(default=SecretStr("user12345"), min_length=6)
+    demo_accountant_password: SecretStr = Field(default=SecretStr("accountant123"), min_length=6)
 
     @field_validator("app_timezone")
     @classmethod

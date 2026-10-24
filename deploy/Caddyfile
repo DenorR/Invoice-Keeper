@@ -1,5 +1,15 @@
 # Caddy сам получает и продлевает сертификат Let's Encrypt для домена.
 {$DOMAIN} {
 	encode zstd gzip
-	reverse_proxy app:8080
+
+	header {
+		# браузер открывает сайт только по HTTPS (1 год)
+		Strict-Transport-Security "max-age=31536000"
+		# не раскрываем версию сервера
+		-Server
+	}
+
+	reverse_proxy app:8080 {
+		header_down -Server
+	}
 }

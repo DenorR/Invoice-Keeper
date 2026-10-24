@@ -52,7 +52,7 @@ def list_entries(
 ) -> tuple[list[AuditLog], int]:
     query = select(AuditLog)
     if action:
-        query = query.where(AuditLog.action.startswith(action))
+        query = query.where(AuditLog.action.startswith(action, autoescape=True))
     if actor:
         query = query.where(AuditLog.actor_label == actor)
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0

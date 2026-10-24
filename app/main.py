@@ -19,6 +19,7 @@ from app.config import BASE_DIR, Settings, load_settings
 from app.container import Container, build_container
 from app.domain.dates import Clock
 from app.errors import ApiError
+from app.middleware import SecurityHeadersMiddleware
 from app.services.reminders import Notifier
 from app.services.users import ensure_admin
 
@@ -167,9 +168,10 @@ def create_app(
         swagger_ui_oauth2_redirect_url=f"{API_PREFIX}/docs/oauth2-redirect",
         redoc_url=None,
         lifespan=lifespan,
-        swagger_ui_parameters={"persistAuthorization": True, "docExpansion": "none"},
+        swagger_ui_parameters={"persistAuthorization": True, "docExpansion": "none", "validatorUrl": None},
     )
     app.state.container = container
+    app.add_middleware(SecurityHeadersMiddleware, docs_prefix=f"{API_PREFIX}/docs", api_prefix=API_PREFIX)
     install_error_handlers(app)
     app.include_router(build_api_router())
     mount_frontend(app)

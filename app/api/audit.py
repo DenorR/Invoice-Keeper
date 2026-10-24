@@ -15,8 +15,8 @@ router = APIRouter(prefix="/audit-log", tags=["Журнал действий (а
 def list_audit(
     admin: AdminUser,
     db: DbDep,
-    action: Annotated[str | None, Query(description="Префикс действия, например occurrence. или auth.")] = None,
-    actor: Annotated[str | None, Query(description="Логин или tg:@username")] = None,
+    action: Annotated[str | None, Query(max_length=64, description="Префикс действия, например occurrence. или auth.")] = None,
+    actor: Annotated[str | None, Query(max_length=128, description="Логин или tg:@username")] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ):

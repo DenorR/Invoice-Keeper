@@ -4,7 +4,7 @@ import { IconArrowBackUp, IconCheck, IconPencil, IconReceipt } from "@tabler/ico
 import { useState } from "react";
 import type { Occurrence } from "../api/client";
 import { useUpdateOccurrence } from "../api/hooks";
-import { formatDate } from "../lib/format";
+import { formatDate, safeHttpUrl } from "../lib/format";
 import { notifyError, notifySuccess } from "./common";
 import { PayModal, type PayMode } from "./PayModal";
 
@@ -12,6 +12,7 @@ import { PayModal, type PayMode } from "./PayModal";
 export function OccurrenceActions({ occurrence, compact = false }: { occurrence: Occurrence; compact?: boolean }) {
   const [mode, setMode] = useState<PayMode | null>(null);
   const update = useUpdateOccurrence();
+  const receiptUrl = safeHttpUrl(occurrence.receipt_url);
 
   const unpay = () =>
     modals.openConfirmModal({
@@ -32,9 +33,9 @@ export function OccurrenceActions({ occurrence, compact = false }: { occurrence:
   return (
     <>
       <Group gap={6} wrap="nowrap" justify="flex-end">
-        {occurrence.receipt_url && (
+        {receiptUrl && (
           <Tooltip label="Чек / платёжка">
-            <ActionIcon component="a" href={occurrence.receipt_url} target="_blank" variant="subtle" aria-label="Чек">
+            <ActionIcon component="a" href={receiptUrl} target="_blank" rel="noopener noreferrer" variant="subtle" aria-label="Чек">
               <IconReceipt size={18} />
             </ActionIcon>
           </Tooltip>

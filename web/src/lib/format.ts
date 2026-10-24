@@ -79,3 +79,14 @@ export function toISODate(value: Date | string | null | undefined): string | nul
   if (!value) return null;
   return dayjs(value).format("YYYY-MM-DD");
 }
+
+/** Ссылка безопасна для href, только если это http(s): никаких javascript:, data: и т. п. */
+export function safeHttpUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}

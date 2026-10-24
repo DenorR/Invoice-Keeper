@@ -1,8 +1,8 @@
 """Демо-данные. Даты считаются от «сегодня», поэтому сценарий защиты работает в любой день.
 
-Тестовые учётные записи (не секреты, только для демонстрации):
-    user / user12345           — обычный пользователь
-    accountant / accountant123 — обычный пользователь
+Тестовые учётные записи (обычные пользователи):
+    user / user12345, accountant / accountant123 — пароли по умолчанию для локального запуска;
+    на сервере задаются через DEMO_USER_PASSWORD / DEMO_ACCOUNTANT_PASSWORD в .env.
 Администратор задаётся в .env (ADMIN_LOGIN / ADMIN_PASSWORD).
 """
 
@@ -24,10 +24,11 @@ from app.services import recurring as recurring_service
 from app.services.audit import Actor
 from app.services.security import hash_password
 
-DEMO_USERS = [
-    ("user", "user12345", "Иван Петров"),
-    ("accountant", "accountant123", "Мария Соколова"),
-]
+def demo_users(settings: Settings) -> list[tuple[str, str, str]]:
+    return [
+        ("user", settings.demo_user_password.get_secret_value(), "Иван Петров"),
+        ("accountant", settings.demo_accountant_password.get_secret_value(), "Мария Соколова"),
+    ]
 
 
 def _anchor_with_previous(target: date) -> date:
@@ -60,7 +61,7 @@ def seed(db: Session, clock: Clock, settings: Settings) -> None:
     system = Actor.system()
 
     users: dict[str, User] = {}
-    for login, password, name in DEMO_USERS:
+    for login, password, name in demo_users(settings):
         user = db.scalar(select(User).where(User.login == login))
         if user is None:
             user = User(login=login, name=name, role="user", password_hash=hash_password(password))

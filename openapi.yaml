@@ -1105,6 +1105,7 @@ paths:
         schema:
           anyOf:
           - type: string
+            maxLength: 64
           - type: 'null'
           description: Префикс действия, например occurrence. или auth.
           title: Action
@@ -1115,6 +1116,7 @@ paths:
         schema:
           anyOf:
           - type: string
+            maxLength: 128
           - type: 'null'
           description: Логин или tg:@username
           title: Actor
@@ -1641,12 +1643,12 @@ components:
         receipt_url:
           anyOf:
           - type: string
-            maxLength: 2083
+            maxLength: 2048
             minLength: 1
             format: uri
           - type: 'null'
           title: Receipt Url
-          description: Ссылка на чек или платёжку
+          description: Ссылка на чек или платёжку (только http/https)
       additionalProperties: false
       type: object
       title: OccurrenceUpdate
@@ -1729,6 +1731,7 @@ components:
           type: string
           maxLength: 200
           minLength: 1
+          pattern: ^[^\x00-\x1F\x7F]*$
           title: Name
           examples:
           - Аренда офиса
@@ -1839,6 +1842,7 @@ components:
           - type: string
             maxLength: 200
             minLength: 1
+            pattern: ^[^\x00-\x1F\x7F]*$
             examples:
             - Аренда офиса
           - type: 'null'
@@ -1960,10 +1964,11 @@ components:
           anyOf:
           - type: string
             maxLength: 128
+            pattern: ^[^\x00-\x1F\x7F]*$
+            examples:
+            - Иван Петров
           - type: 'null'
           title: Name
-          examples:
-          - Иван Петров
       additionalProperties: false
       type: object
       required:
@@ -2031,6 +2036,9 @@ components:
           anyOf:
           - type: string
             maxLength: 128
+            pattern: ^[^\x00-\x1F\x7F]*$
+            examples:
+            - Иван Петров
           - type: 'null'
           title: Name
       additionalProperties: false

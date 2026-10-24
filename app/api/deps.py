@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Annotated
+from typing import Annotated, NamedTuple
+from urllib.parse import urlsplit
 
 from fastapi import Depends, Request
 from fastapi.security import APIKeyCookie, HTTPAuthorizationCredentials, HTTPBearer
@@ -34,23 +35,47 @@ def get_db(container: ContainerDep) -> Iterator[Session]:
 DbDep = Annotated[Session, Depends(get_db)]
 
 
+class Credentials(NamedTuple):
+    token: str | None
+    from_cookie: bool
+
+
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
 def get_token(
     bearer: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
     cookie: Annotated[str | None, Depends(cookie_scheme)],
-) -> str | None:
+) -> Credentials:
     if bearer is not None:
-        return bearer.credentials
-    return cookie
+        return Credentials(bearer.credentials, from_cookie=False)
+    return Credentials(cookie, from_cookie=True)
+
+
+def ensure_same_origin(request: Request) -> None:
+    """Защита от CSRF: браузер сам прикладывает cookie, поэтому изменяющие запросы
+    с cookie-сессией принимаем только со своего сайта (заголовок Origin/Referer)."""
+    if request.method in SAFE_METHODS:
+        return
+    source = request.headers.get("origin") or request.headers.get("referer")
+    if source is None:
+        return  # не браузерный клиент (curl, тесты) — CSRF невозможен
+    host = request.headers.get("host")
+    if not host or urlsplit(source).netloc.lower() != host.lower():
+        raise forbidden("Запрос отклонён: недопустимый источник (CSRF)")
 
 
 def get_current_user(
     request: Request,
     db: DbDep,
     container: ContainerDep,
-    token: Annotated[str | None, Depends(get_token)],
+    credentials: Annotated[Credentials, Depends(get_token)],
 ) -> User:
+    token = credentials.token
     if not token:
         raise unauthorized()
+    if credentials.from_cookie:
+        ensure_same_origin(request)
     user = auth_service.resolve(db, token, container.clock.now())
     if user is None:
         raise unauthorized("Сессия истекла или недействительна — войдите снова")
