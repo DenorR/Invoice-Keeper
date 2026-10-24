@@ -24,13 +24,16 @@ if locale -a 2>/dev/null | grep -qiE '^c\.utf-?8$'; then export LANG=C.UTF-8 LC_
 
 # ═════════════════════════════ оформление ═════════════════════════════
 setup_colors() {
-  RESET="" BOLD="" DIM="" GRAY="" CYAN="" GREEN="" YELLOW="" RED="" WHITE="" LOGO1="" LOGO2="" LOGO3="" LOGO4=""
+  RESET="" BOLD="" DIM="" GRAY="" CYAN="" GREEN="" YELLOW="" RED="" WHITE="" BRAND=""
   [[ -t 1 ]] || return 0
   local colors; colors=$(tput colors 2>/dev/null || echo 0)
   (( colors >= 8 )) || return 0
   RESET=$'\e[0m' BOLD=$'\e[1m' DIM=$'\e[2m' GRAY=$'\e[90m' CYAN=$'\e[36m' GREEN=$'\e[32m' YELLOW=$'\e[33m' RED=$'\e[31m' WHITE=$'\e[97m'
-  if (( colors >= 256 )); then LOGO1=$'\e[38;5;220m' LOGO2=$'\e[38;5;39m' LOGO3=$'\e[38;5;205m' LOGO4=$'\e[38;5;51m'
-  else LOGO1=$YELLOW LOGO2=$'\e[34m' LOGO3=$'\e[35m' LOGO4=$CYAN; fi
+  # Фирменный голубой aéza #4cc6f1: точный (24-битный) цвет, а где терминал его не умеет — ближайший из 256.
+  if (( colors >= 256 )) && [[ ${TERM_PROGRAM:-} != Apple_Terminal ]]; then BRAND=$'\e[38;2;76;198;241m'
+  elif (( colors >= 256 )); then BRAND=$'\e[38;5;81m'
+  else BRAND=$CYAN; fi
+  CYAN=$BRAND   # активные элементы мастера (◆, ❯, индикатор) — тем же цветом
 }
 
 # Интерактивный режим: живой терминал, без --yes и --plain → курсор, стрелки, анимация.
@@ -39,20 +42,20 @@ animated() { [[ $PLAIN -eq 0 && -t 1 ]]; }
 
 log() { printf '[%s] %s\n' "$(date '+%F %T')" "$*" >>"$LOG_FILE"; }
 
-paint_logo() {  # закрашивает «лицо» букв белым, а тени — цветом буквы
-  local color=$1 text=$2
-  printf '%s' "${color}${text//█/${WHITE}█${color}}${RESET}"
+paint_logo() {  # «лицо» букв — белым, тени — фирменным голубым
+  local text=$1
+  printf '%s' "${BRAND}${text//█/${WHITE}█${BRAND}}${RESET}"
 }
 
 banner() {
-  local -a A=("         " " ██████╗ " " ╚════██╗" " ███████║" "██╔═══██║" "╚███████║" " ╚══════╝")
-  local -a E=("   ██╔╝  " " ██████╗ " "██╔═══██╗" "████████║" "██╔═════╝" "╚███████╗" " ╚══════╝")
-  local -a Z=("         " "████████╗" "╚════██╔╝" "   ██╔═╝ " " ██╔═╝   " "████████╗" "╚═══════╝")
+  # «aéza» шрифтом ANSI Shadow. Ударение — ровный косой штрих над правой частью «e».
+  local -a A=("         " "         " " ██████╗ " " ╚════██╗" " ███████║" "██╔═══██║" "╚███████║" " ╚══════╝")
+  local -a E=("     ██╗ " "    ██╔╝ " " ██████╗ " "██╔═══██╗" "████████║" "██╔═════╝" "╚███████╗" " ╚══════╝")
+  local -a Z=("         " "         " "████████╗" "╚════██╔╝" "   ██╔═╝ " " ██╔═╝   " "████████╗" "╚═══════╝")
   local i
   echo
-  for i in 0 1 2 3 4 5 6; do
-    printf '   %s %s %s %s\n' "$(paint_logo "$LOGO1" "${A[i]}")" "$(paint_logo "$LOGO2" "${E[i]}")" \
-      "$(paint_logo "$LOGO3" "${Z[i]}")" "$(paint_logo "$LOGO4" "${A[i]}")"
+  for i in "${!A[@]}"; do
+    printf '   %s %s %s %s\n' "$(paint_logo "${A[i]}")" "$(paint_logo "${E[i]}")" "$(paint_logo "${Z[i]}")" "$(paint_logo "${A[i]}")"
   done
   cat <<EOF
 

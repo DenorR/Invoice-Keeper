@@ -4,8 +4,8 @@
 
 | Файл | Что это |
 |---|---|
-| `invoice-keeper-1.1.0.run` | установщик: приложение и мастер настройки в одном файле |
-| `invoice-keeper-1.1.0.run.sha256` | контрольная сумма для проверки файла |
+| `invoice-keeper-1.1.1.run` | установщик: приложение и мастер настройки в одном файле |
+| `invoice-keeper-1.1.1.run.sha256` | контрольная сумма для проверки файла |
 | `README.md` | эта инструкция |
 
 Репозиторий, GitHub и сборка у себя не нужны: копируете один файл на сервер и запускаете.
@@ -28,19 +28,19 @@
 **Windows** (PowerShell или «Терминал»):
 
 ```powershell
-scp C:\путь\к\deploy-kit\invoice-keeper-1.1.0.run root@IP_СЕРВЕРА:
+scp C:\путь\к\deploy-kit\invoice-keeper-1.1.1.run root@IP_СЕРВЕРА:
 ```
 
 Например, если проект лежит в `D:\Hackathon`:
 
 ```powershell
-scp D:\Hackathon\deploy-kit\invoice-keeper-1.1.0.run root@IP_СЕРВЕРА:
+scp D:\Hackathon\deploy-kit\invoice-keeper-1.1.1.run root@IP_СЕРВЕРА:
 ```
 
 **macOS и Linux**:
 
 ```bash
-scp ~/путь/к/deploy-kit/invoice-keeper-1.1.0.run root@IP_СЕРВЕРА:
+scp ~/путь/к/deploy-kit/invoice-keeper-1.1.1.run root@IP_СЕРВЕРА:
 ```
 
 - `scp` спросит пароль от сервера (или возьмёт SSH-ключ).
@@ -53,7 +53,7 @@ scp ~/путь/к/deploy-kit/invoice-keeper-1.1.0.run root@IP_СЕРВЕРА:
 
 ```bash
 ssh root@IP_СЕРВЕРА
-bash invoice-keeper-1.1.0.run
+bash invoice-keeper-1.1.1.run
 ```
 
 Первая команда выполняется на вашем компьютере и открывает терминал сервера. Вторая выполняется уже на сервере.
@@ -125,7 +125,7 @@ bash invoice-keeper-<новая версия>.run
 ```bash
 ADMIN_PASSWORD='Надёжный-пароль-1' \
 TELEGRAM_BOT_TOKEN='1234567890:AAH…' TELEGRAM_CHAT_ID='-1001234567890' \
-bash invoice-keeper-1.1.0.run --yes
+bash invoice-keeper-1.1.1.run --yes
 ```
 
 | Переменная | Значение |
@@ -142,7 +142,7 @@ bash invoice-keeper-1.1.0.run --yes
 ## Параметры установщика
 
 ```text
-bash invoice-keeper-1.1.0.run [--yes] [--reconfigure] [--plain] [--extract ПАПКА] [--version] [--help]
+bash invoice-keeper-1.1.1.run [--yes] [--reconfigure] [--plain] [--extract ПАПКА] [--version] [--help]
 ```
 
 | Параметр | Что делает |
@@ -157,13 +157,13 @@ bash invoice-keeper-1.1.0.run [--yes] [--reconfigure] [--plain] [--extract ПА�
 macOS и Linux:
 
 ```bash
-sha256sum -c invoice-keeper-1.1.0.run.sha256
+sha256sum -c invoice-keeper-1.1.1.run.sha256
 ```
 
 Windows — сравните результат с числом из файла `.sha256`:
 
 ```powershell
-Get-FileHash .\invoice-keeper-1.1.0.run -Algorithm SHA256
+Get-FileHash .\invoice-keeper-1.1.1.run -Algorithm SHA256
 ```
 
 Установщик и сам проверяет контрольную сумму перед запуском на сервере, поэтому повреждённый файл не установится.
