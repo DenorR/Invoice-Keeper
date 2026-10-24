@@ -325,7 +325,9 @@ npm run build      # сборка в app/static
 Подробная инструкция: [`deploy-kit/README.md`](deploy-kit/README.md).
 
 ```bash
+# на своём компьютере, из корня репозитория (в Windows путь — deploy-kit\invoice-keeper-1.0.0.run)
 scp deploy-kit/invoice-keeper-1.0.0.run root@IP_СЕРВЕРА:
+# подключиться к серверу и запустить установщик уже там
 ssh root@IP_СЕРВЕРА
 bash invoice-keeper-1.0.0.run
 ```
