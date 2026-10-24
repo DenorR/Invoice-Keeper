@@ -433,6 +433,8 @@ export interface components {
             overdue_days: number;
             /** Days Until Due */
             days_until_due: number | null;
+            /** Reminder Sent At */
+            reminder_sent_at: string | null;
         };
         /** OccurrenceOut */
         OccurrenceOut: {
@@ -662,6 +664,11 @@ export interface components {
             bot_configured: boolean;
             /** Chat Configured */
             chat_configured: boolean;
+            /**
+             * Bot Username
+             * @description Имя бота, если он подключился к Telegram
+             */
+            bot_username: string | null;
         };
         /** TotalOut */
         TotalOut: {

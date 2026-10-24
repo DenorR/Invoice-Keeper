@@ -45,13 +45,6 @@ export function pluralDays(n: number): string {
   return `${abs} ${word}`;
 }
 
-export function pluralPeriods(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return `${n} период`;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${n} периода`;
-  return `${n} периодов`;
-}
 
 type StateView = { color: string; variant: "filled" | "light" | "outline"; label: string };
 
@@ -65,7 +58,7 @@ export function stateView(
     case "due_today":
       return { color: "orange", variant: "filled", label: "Срок сегодня" };
     case "due_soon":
-      return { color: "yellow", variant: "light", label: `Через ${pluralDays(o.days_until_due ?? 0)}` };
+      return { color: "yellow", variant: "filled", label: o.days_until_due === 1 ? "Завтра" : `Через ${pluralDays(o.days_until_due ?? 0)}` };
     case "upcoming":
       return { color: "gray", variant: "light", label: `Через ${pluralDays(o.days_until_due ?? 0)}` };
     case "paid_on_time":
@@ -89,4 +82,22 @@ export function safeHttpUrl(value: string | null | undefined): string | null {
   } catch {
     return null;
   }
+}
+
+const WEEKDAYS_SHORT = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
+
+export function weekday(value: string): string {
+  return WEEKDAYS_SHORT[dayjs(value).day()];
+}
+
+function plural(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
+}
+
+export function pluralPayments(n: number): string {
+  return `${n} ${plural(n, "платёж", "платежа", "платежей")}`;
 }

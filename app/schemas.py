@@ -125,6 +125,7 @@ class OccurrenceBrief(BaseModel):
     is_overdue: bool
     overdue_days: int
     days_until_due: int | None
+    reminder_sent_at: datetime | None
 
 
 class OccurrenceOut(BaseModel):
@@ -241,7 +242,8 @@ class RecurringPaymentOut(BaseModel):
             info = compute_state(next_occurrence.due_date, None, today, remind_days)
             brief = OccurrenceBrief(id=next_occurrence.id, due_date=next_occurrence.due_date, state=info.state,
                                     is_overdue=info.is_overdue, overdue_days=info.overdue_days,
-                                    days_until_due=info.days_until_due)
+                                    days_until_due=info.days_until_due,
+                                    reminder_sent_at=next_occurrence.reminder_sent_at)
         return cls(
             id=payment.id, name=payment.name, amount=from_minor(payment.amount_minor), currency=payment.currency,
             frequency=payment.frequency, anchor_date=payment.anchor_date, next_due_date=next_due_date,
@@ -324,6 +326,7 @@ class AuditOut(BaseModel):
 class TelegramStatus(BaseModel):
     bot_configured: bool
     chat_configured: bool
+    bot_username: str | None = Field(description="Имя бота, если он подключился к Telegram")
 
 
 class MetaOut(BaseModel):

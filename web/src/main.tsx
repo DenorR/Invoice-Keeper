@@ -37,7 +37,7 @@ createRoot(document.getElementById("root")!).render(
       <DatesProvider settings={{ locale: "ru", firstDayOfWeek: 1 }}>
         <QueryClientProvider client={queryClient}>
           <ModalsProvider labels={{ confirm: "Подтвердить", cancel: "Отмена" }}>
-            <Notifications position="top-right" />
+            <Notifications position="bottom-right" autoClose={5000} />
             <BrowserRouter>
               <AuthProvider>
                 <App />

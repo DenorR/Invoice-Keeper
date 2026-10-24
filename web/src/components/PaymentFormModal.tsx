@@ -77,10 +77,14 @@ export function PaymentFormModal({ opened, payment, onClose }: Props) {
         notifySuccess(`Платёж «${name.trim()}» обновлён`);
       } else {
         await create.mutateAsync({ name: name.trim(), amount: amountValue, currency, next_due_date: dueDate, frequency });
+        const telegramOn = meta.data?.telegram.chat_configured;
+        const remindOn = dayjs(dueDate).subtract(remindDays, "day").format("YYYY-MM-DD");
         notifySuccess(
-          daysLeft !== null && daysLeft <= remindDays
-            ? "Напоминание в Telegram отправлено сразу — срок близко"
-            : `Напоминание придёт ${formatDate(dayjs(dueDate).subtract(remindDays, "day").format("YYYY-MM-DD"))}`,
+          !telegramOn
+            ? "Telegram не настроен — напоминание не отправится, но платёж виден в панели"
+            : daysLeft !== null && daysLeft <= remindDays
+              ? "Срок близко — напоминание придёт в Telegram прямо сейчас"
+              : `Напоминание придёт в Telegram ${formatDate(remindOn)}`,
           `Платёж «${name.trim()}» добавлен`,
         );
       }
@@ -149,17 +153,18 @@ export function PaymentFormModal({ opened, payment, onClose }: Props) {
 
         {daysLeft !== null && daysLeft < 0 && !payment && (
           <Alert color="orange" icon={<IconInfoCircle size={16} />} p="xs">
-            Дата в прошлом: периоды до сегодняшнего дня появятся как просроченные.
+            Дата в прошлом: все сроки до сегодняшнего дня появятся как просроченные (их можно сразу отметить оплаченными).
           </Alert>
         )}
-        {daysLeft !== null && daysLeft >= 0 && daysLeft <= remindDays && (
+        {daysLeft !== null && daysLeft >= 0 && daysLeft <= remindDays && meta.data?.telegram.chat_configured && (
           <Alert color="blue" icon={<IconBrandTelegram size={16} />} p="xs">
-            До срока {pluralDays(daysLeft)} — напоминание в Telegram уйдёт сразу после сохранения.
+            {daysLeft === 0 ? "Срок сегодня" : `До срока ${pluralDays(daysLeft)}`} — напоминание в Telegram уйдёт сразу
+            после сохранения.
           </Alert>
         )}
         {payment && (
           <Text size="xs" c="dimmed">
-            Изменения применяются к будущим неоплаченным периодам. Оплаченные и прошлые периоды не меняются.
+            Изменения коснутся будущих неоплаченных сроков. Уже оплаченные и прошлые остаются как были.
           </Text>
         )}
 

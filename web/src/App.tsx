@@ -2,6 +2,7 @@ import {
   ActionIcon,
   AppShell,
   Badge,
+  Avatar,
   Burger,
   Center,
   Group,
@@ -42,15 +43,15 @@ import { OccurrencesPage } from "./pages/OccurrencesPage";
 import { RecurringPage } from "./pages/RecurringPage";
 import { UsersPage } from "./pages/UsersPage";
 
-type NavItem = { to: string; label: string; icon: ReactNode; adminOnly?: boolean };
+type NavItem = { to: string; label: string; hint: string; icon: ReactNode; adminOnly?: boolean };
 
 const NAV: NavItem[] = [
-  { to: "/", label: "Главная", icon: <IconLayoutDashboard size={18} /> },
-  { to: "/payments", label: "Платежи", icon: <IconReceipt2 size={18} /> },
-  { to: "/recurring", label: "Регулярные платежи", icon: <IconRepeat size={18} /> },
-  { to: "/calendar", label: "Календарь", icon: <IconCalendarMonth size={18} /> },
-  { to: "/users", label: "Пользователи", icon: <IconUsers size={18} />, adminOnly: true },
-  { to: "/audit", label: "Журнал действий", icon: <IconHistory size={18} />, adminOnly: true },
+  { to: "/", label: "Главная", hint: "Что оплатить сейчас", icon: <IconLayoutDashboard size={18} /> },
+  { to: "/payments", label: "Платежи", hint: "Все сроки и оплаты", icon: <IconReceipt2 size={18} /> },
+  { to: "/recurring", label: "Регулярные платежи", hint: "Аренда, подписки, серверы", icon: <IconRepeat size={18} /> },
+  { to: "/calendar", label: "Календарь", hint: "Сроки и бюджет", icon: <IconCalendarMonth size={18} /> },
+  { to: "/users", label: "Пользователи", hint: "Доступ сотрудников", icon: <IconUsers size={18} />, adminOnly: true },
+  { to: "/audit", label: "Журнал действий", hint: "Кто и что менял", icon: <IconHistory size={18} />, adminOnly: true },
 ];
 
 function ColorSchemeToggle() {
@@ -77,8 +78,11 @@ function UserMenu() {
     <Menu position="bottom-end" width={220}>
       <Menu.Target>
         <UnstyledButton>
-          <Group gap={8}>
-            <Stack gap={0} align="flex-end" visibleFrom="xs">
+          <Group gap={8} wrap="nowrap">
+            <Avatar color={user.role === "admin" ? "grape" : "blue"} radius="xl" size={32}>
+              {(user.name || user.login).slice(0, 1).toUpperCase()}
+            </Avatar>
+            <Stack gap={0} visibleFrom="xs">
               <Text size="sm" fw={600} lh={1.2}>
                 {user.name || user.login}
               </Text>
@@ -145,6 +149,7 @@ function Layout({ children }: { children: ReactNode }) {
             to={item.to}
             end={item.to === "/"}
             label={item.label}
+            description={item.hint}
             leftSection={item.icon}
             className="nav-link"
             active={item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to)}

@@ -69,7 +69,7 @@ def test_backfilled_overdue_periods_grouped_into_one_message(client, admin, noti
     assert len(notifier.sent) == 1
     assert [i.due_date for i in notifier.sent[0].items] == [date(2026, 8, 5), date(2026, 9, 5), date(2026, 10, 5)]
     text, buttons = render_reminder(notifier.sent[0])
-    assert "Просроченный платёж" in text and len(buttons) == 3
+    assert "Просрочено платежей: 3" in text and len(buttons) == 3
 
 
 def test_failed_send_is_retried(client, admin, notifier, run_reminders):
@@ -123,3 +123,22 @@ def test_cancelled_send_is_released(client, admin, notifier, app):
     notifier.send_reminder = FakeNotifier.send_reminder.__get__(notifier)
     asyncio.run(app.state.container.reminders.run_cycle())
     assert len(notifier.sent) == 1
+
+
+def test_message_states():
+    from app.services.reminders import Reminder, ReminderItem
+
+    today = date(2026, 10, 24)
+
+    def render(due, paid_at=None, label=None):
+        item = ReminderItem(7, due, 8500000, "RUB", paid_at=paid_at, paid_by_label=label)
+        return render_reminder(Reminder(1, "Аренда", True, [item], today))
+
+    assert "сегодня" in render(today)[0]
+    assert "завтра" in render(date(2026, 10, 25))[0]
+    text, buttons = render(date(2026, 10, 22))
+    assert "просрочен на 2 дня" in text and buttons == [("✅ Оплачено", 7)]
+    text, buttons = render(date(2026, 10, 26), paid_at=today, label="tg:@anna")
+    assert "✅ <b>Оплачено</b>" in text and "вовремя" in text and "tg:@anna" in text and buttons == []
+    text, _ = render(date(2026, 10, 20), paid_at=today)
+    assert "с опозданием на 4 дня" in text

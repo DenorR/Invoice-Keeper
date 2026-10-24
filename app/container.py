@@ -25,6 +25,7 @@ class Container:
     rate_limiter: LoginRateLimiter = field(default_factory=LoginRateLimiter)
     bot: object | None = None
     dispatcher: object | None = None
+    telegram_bot_username: str | None = None
 
 
 def build_container(settings: Settings, *, clock: Clock | None = None, notifier: Notifier | None = None) -> Container:
@@ -38,7 +39,7 @@ def build_container(settings: Settings, *, clock: Clock | None = None, notifier:
             from app.telegram.bot import TelegramNotifier, create_bot
 
             bot = create_bot(settings)
-            notifier = TelegramNotifier(bot, settings.telegram_chat_id)
+            notifier = TelegramNotifier(bot, settings)
         else:
             notifier = NullNotifier()
 

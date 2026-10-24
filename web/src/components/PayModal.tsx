@@ -1,4 +1,4 @@
-import { Alert, Button, Group, Modal, Stack, Text, TextInput } from "@mantine/core";
+import { Alert, Button, Chip, Group, Modal, Stack, Text, TextInput } from "@mantine/core";
 import { DatePickerInput } from "@mantine/dates";
 import { IconCalendar, IconInfoCircle } from "@tabler/icons-react";
 import dayjs from "dayjs";
@@ -59,12 +59,23 @@ export function PayModal({ occurrence, mode, onClose }: Props) {
 
   return (
     <Modal opened onClose={onClose} title={mode === "pay" ? "Отметить оплату" : "Исправить дату оплаты"} centered>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
       <Stack>
         <div>
           <Text fw={600}>{occurrence.name}</Text>
           <Text size="sm" c="dimmed">
             Срок {formatDate(occurrence.due_date)} · {formatMoney(occurrence.amount, occurrence.currency)}
           </Text>
+          {mode === "edit" && (
+            <Text size="xs" c="dimmed" mt={4}>
+              Срок оплаты не меняется — пересчитается только просрочка.
+            </Text>
+          )}
         </div>
         <DatePickerInput
           label="Фактическая дата оплаты"
@@ -76,6 +87,16 @@ export function PayModal({ occurrence, mode, onClose }: Props) {
           required
           data-autofocus
         />
+        <Group gap="xs">
+          <Chip size="xs" checked={paidAt === today} onChange={() => setPaidAt(today)}>
+            Сегодня
+          </Chip>
+          {occurrence.due_date <= today && occurrence.due_date !== today && (
+            <Chip size="xs" checked={paidAt === occurrence.due_date} onChange={() => setPaidAt(occurrence.due_date)}>
+              В день срока ({formatDate(occurrence.due_date)})
+            </Chip>
+          )}
+        </Group>
         {paidAt && lateDays > 0 ? (
           <Alert color="orange" icon={<IconInfoCircle size={16} />} p="xs">
             Оплата позже срока — будет отмечена просрочка {pluralDays(lateDays)}.
@@ -98,11 +119,12 @@ export function PayModal({ occurrence, mode, onClose }: Props) {
           <Button variant="default" onClick={onClose}>
             Отмена
           </Button>
-          <Button onClick={submit} loading={update.isPending} disabled={!paidAt}>
+          <Button type="submit" loading={update.isPending} disabled={!paidAt}>
             {mode === "pay" ? "Отметить оплату" : "Сохранить"}
           </Button>
         </Group>
       </Stack>
+      </form>
     </Modal>
   );
 }

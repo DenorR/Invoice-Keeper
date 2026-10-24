@@ -78,6 +78,7 @@ def meta(user: CurrentUser, container: ContainerDep):
         telegram=TelegramStatus(
             bot_configured=settings.telegram_enabled,
             chat_configured=settings.telegram_enabled and settings.telegram_chat_id is not None,
+            bot_username=container.telegram_bot_username,
         ),
     )
 

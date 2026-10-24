@@ -136,7 +136,12 @@ def create_app(
             if container.dispatcher is not None and settings.telegram_polling:
                 from app.telegram.bot import run_polling
 
-                tasks.append(asyncio.create_task(run_polling(container.dispatcher, container.bot), name="telegram-polling"))
+                def remember_username(username: str) -> None:
+                    container.telegram_bot_username = username
+
+                tasks.append(asyncio.create_task(
+                    run_polling(container.dispatcher, container.bot, remember_username), name="telegram-polling"
+                ))
             if not settings.telegram_enabled:
                 log.warning("TELEGRAM_BOT_TOKEN не задан — напоминания в Telegram отключены")
             elif settings.telegram_chat_id is None:

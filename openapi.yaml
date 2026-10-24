@@ -1496,6 +1496,12 @@ components:
           - type: integer
           - type: 'null'
           title: Days Until Due
+        reminder_sent_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Reminder Sent At
       type: object
       required:
       - id
@@ -1504,6 +1510,7 @@ components:
       - is_overdue
       - overdue_days
       - days_until_due
+      - reminder_sent_at
       title: OccurrenceBrief
     OccurrenceOut:
       properties:
@@ -1922,10 +1929,17 @@ components:
         chat_configured:
           type: boolean
           title: Chat Configured
+        bot_username:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bot Username
+          description: Имя бота, если он подключился к Telegram
       type: object
       required:
       - bot_configured
       - chat_configured
+      - bot_username
       title: TelegramStatus
     TotalOut:
       properties:

@@ -1,28 +1,30 @@
-import { Badge, Card, Group, Pagination, Select, Skeleton, Stack, Table, Tabs, Text, Tooltip } from "@mantine/core";
+import { Badge, Card, Group, Pagination, Select, Stack, Tabs, Text } from "@mantine/core";
 import { DatePickerInput } from "@mantine/dates";
-import { IconBrandTelegram, IconCalendar, IconInbox } from "@tabler/icons-react";
+import { IconCalendar, IconInbox } from "@tabler/icons-react";
 import { useMemo } from "react";
 import { useSearchParams } from "react-router";
 import type { Currency } from "../api/client";
-import { useOccurrences, useRecurring, type OccurrenceQuery } from "../api/hooks";
-import { ErrorAlert, Money, PageHeader, StatusBadge } from "../components/common";
-import { OccurrenceActions } from "../components/OccurrenceActions";
-import { CURRENCIES, formatDate } from "../lib/format";
+import { useOccurrences, useRecurring, useSummary, type OccurrenceQuery } from "../api/hooks";
+import { ErrorAlert, PageHeader } from "../components/common";
+import { OccurrenceList, useIsMobile } from "../components/OccurrenceList";
+import { CURRENCIES } from "../lib/format";
 
 const PAGE_SIZE = 50;
 
-type Tab = "all" | "unpaid" | "overdue" | "paid";
+type Tab = "unpaid" | "overdue" | "paid" | "all";
 
-const TAB_QUERY: Record<Tab, Partial<OccurrenceQuery>> = {
-  all: { sort: "-due_date" },
-  unpaid: { status: "unpaid", sort: "due_date" },
-  overdue: { status: "unpaid", overdue: true, sort: "due_date" },
-  paid: { status: "paid", sort: "-due_date" },
-};
+const TABS: { value: Tab; label: string; color?: string; query: Partial<OccurrenceQuery>; empty: string }[] = [
+  { value: "unpaid", label: "К оплате", query: { status: "unpaid", sort: "due_date" }, empty: "Неоплаченных платежей нет 🎉" },
+  { value: "overdue", label: "Просроченные", color: "red", query: { status: "unpaid", overdue: true, sort: "due_date" }, empty: "Просроченных платежей нет 🎉" },
+  { value: "paid", label: "Оплаченные", color: "green", query: { status: "paid", sort: "-due_date" }, empty: "Оплат пока нет" },
+  { value: "all", label: "Все", query: { sort: "-due_date" }, empty: "Платежей пока нет" },
+];
 
 export function OccurrencesPage() {
+  const isMobile = useIsMobile();
   const [params, setParams] = useSearchParams();
-  const tab = (params.get("tab") as Tab) || "all";
+  const tab = (TABS.find((t) => t.value === params.get("tab"))?.value ?? "unpaid") as Tab;
+  const tabConfig = TABS.find((t) => t.value === tab)!;
   const currency = (params.get("currency") as Currency) || undefined;
   const paymentId = params.get("payment") ? Number(params.get("payment")) : undefined;
   const from = params.get("from") || undefined;
@@ -39,17 +41,26 @@ export function OccurrencesPage() {
     setParams(next, { replace: true });
   };
 
-  const query: OccurrenceQuery = {
-    ...TAB_QUERY[tab],
+  const occurrences = useOccurrences({
+    ...tabConfig.query,
     currency,
     recurring_payment_id: paymentId,
     from,
     to,
     limit: PAGE_SIZE,
     offset: (page - 1) * PAGE_SIZE,
-  };
-  const occurrences = useOccurrences(query);
+  });
   const recurring = useRecurring(true);
+  const summary = useSummary();
+
+  const counts = useMemo(() => {
+    const c = summary.data?.currencies ?? [];
+    return {
+      unpaid: c.reduce((n, x) => n + x.unpaid.count, 0),
+      overdue: c.reduce((n, x) => n + x.overdue.count, 0),
+      paid: c.reduce((n, x) => n + x.paid.count, 0),
+    };
+  }, [summary.data]);
 
   const paymentOptions = useMemo(
     () =>
@@ -62,25 +73,34 @@ export function OccurrencesPage() {
 
   const items = occurrences.data?.items ?? [];
   const total = occurrences.data?.total ?? 0;
+  const hasFilters = Boolean(currency || paymentId || from || to);
 
   return (
     <>
-      <PageHeader
-        title="Платежи"
-        description="Каждый период регулярного платежа — со своим сроком и отметкой об оплате"
-      />
+      <PageHeader title="Платежи" description="Каждый месяц — отдельная строка: свой срок и своя отметка об оплате" />
 
       <Card withBorder padding={0}>
-        <Tabs value={tab} onChange={(v) => setParam({ tab: v === "all" ? null : v })}>
-          <Tabs.List px="md" pt="xs">
-            <Tabs.Tab value="all">Все</Tabs.Tab>
-            <Tabs.Tab value="unpaid">К оплате</Tabs.Tab>
-            <Tabs.Tab value="overdue" color="red">
-              Просроченные
-            </Tabs.Tab>
-            <Tabs.Tab value="paid" color="green">
-              Оплаченные
-            </Tabs.Tab>
+        <Tabs value={tab} onChange={(v) => setParam({ tab: v === "unpaid" ? null : v })}>
+          <Tabs.List px={isMobile ? "xs" : "md"} pt="xs">
+            {TABS.map((t) => {
+              const count = t.value === "all" ? null : counts[t.value];
+              return (
+                <Tabs.Tab
+                  key={t.value}
+                  value={t.value}
+                  color={t.color}
+                  rightSection={
+                    count ? (
+                      <Badge size="sm" circle={count < 10} variant={t.value === "overdue" ? "filled" : "light"} color={t.color ?? "gray"}>
+                        {count}
+                      </Badge>
+                    ) : null
+                  }
+                >
+                  {t.label}
+                </Tabs.Tab>
+              );
+            })}
           </Tabs.List>
         </Tabs>
 
@@ -91,106 +111,53 @@ export function OccurrencesPage() {
             value={currency ?? null}
             onChange={(v) => setParam({ currency: v })}
             clearable
-            w={140}
+            w={isMobile ? "100%" : 140}
           />
           <Select
-            placeholder="Все платежи"
+            placeholder="Все регулярные платежи"
             data={paymentOptions}
             value={paymentId ? String(paymentId) : null}
             onChange={(v) => setParam({ payment: v })}
             clearable
             searchable
-            w={260}
+            nothingFoundMessage="Не найдено"
+            w={isMobile ? "100%" : 260}
           />
           <DatePickerInput
             type="range"
-            placeholder="Срок: любой"
+            placeholder="Срок: за всё время"
             leftSection={<IconCalendar size={16} />}
             value={[from ?? null, to ?? null]}
             onChange={([start, end]) => setParam({ from: start, to: end })}
             valueFormat="DD.MM.YYYY"
             clearable
-            w={260}
+            w={isMobile ? "100%" : 260}
           />
-          <Text size="sm" c="dimmed" ml="auto">
+          <Text size="sm" c="dimmed" ml={isMobile ? 0 : "auto"}>
             Найдено: {total}
           </Text>
         </Group>
 
         <ErrorAlert error={occurrences.error} />
 
-        <Table.ScrollContainer minWidth={900}>
-          <Table verticalSpacing="sm" highlightOnHover>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Срок</Table.Th>
-                <Table.Th>Платёж</Table.Th>
-                <Table.Th ta="right">Сумма</Table.Th>
-                <Table.Th>Статус</Table.Th>
-                <Table.Th>Дата оплаты</Table.Th>
-                <Table.Th>Отметил</Table.Th>
-                <Table.Th />
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {occurrences.isLoading &&
-                Array.from({ length: 5 }).map((_, i) => (
-                  <Table.Tr key={i}>
-                    <Table.Td colSpan={7}>
-                      <Skeleton h={24} />
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-              {items.map((o) => (
-                <Table.Tr key={o.id} className={o.payment_active ? undefined : "row-muted"}>
-                  <Table.Td className="nowrap tabular">{formatDate(o.due_date)}</Table.Td>
-                  <Table.Td>
-                    <Group gap={6} wrap="nowrap">
-                      <Text size="sm" fw={500}>
-                        {o.name}
-                      </Text>
-                      {!o.payment_active && (
-                        <Badge size="xs" variant="outline" color="gray">
-                          прекращён
-                        </Badge>
-                      )}
-                      {o.reminder_sent_at && o.status === "unpaid" && (
-                        <Tooltip label={`Напоминание отправлено ${formatDate(o.reminder_sent_at)}`}>
-                          <IconBrandTelegram size={16} color="var(--mantine-color-blue-5)" />
-                        </Tooltip>
-                      )}
-                    </Group>
-                  </Table.Td>
-                  <Table.Td ta="right">
-                    <Money amount={o.amount} currency={o.currency} />
-                  </Table.Td>
-                  <Table.Td>
-                    <StatusBadge occurrence={o} />
-                  </Table.Td>
-                  <Table.Td className="nowrap tabular">{formatDate(o.paid_at)}</Table.Td>
-                  <Table.Td>
-                    <Text size="sm" c="dimmed">
-                      {o.paid_by?.label ?? "—"}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <OccurrenceActions occurrence={o} compact />
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
-
-        {!occurrences.isLoading && items.length === 0 && (
-          <Stack align="center" py={48} gap={4}>
-            <IconInbox size={36} color="var(--mantine-color-gray-5)" />
-            <Text fw={600}>Ничего не найдено</Text>
-            <Text size="sm" c="dimmed">
-              Измените фильтры или вкладку
-            </Text>
-          </Stack>
-        )}
+        <div style={isMobile ? { padding: "0 var(--mantine-spacing-sm) var(--mantine-spacing-sm)" } : undefined}>
+          <OccurrenceList
+            groups={[{ key: "all", title: null, items }]}
+            loading={occurrences.isLoading}
+            showPaidInfo={tab === "paid" || tab === "all"}
+            empty={
+              <Stack align="center" py={48} gap={4}>
+                <IconInbox size={36} color="var(--mantine-color-gray-5)" />
+                <Text fw={600}>{hasFilters ? "По фильтрам ничего не найдено" : tabConfig.empty}</Text>
+                {hasFilters && (
+                  <Text size="sm" c="blue" style={{ cursor: "pointer" }} onClick={() => setParam({ currency: null, payment: null, from: null, to: null })}>
+                    Сбросить фильтры
+                  </Text>
+                )}
+              </Stack>
+            }
+          />
+        </div>
 
         {total > PAGE_SIZE && (
           <Group justify="center" p="md">

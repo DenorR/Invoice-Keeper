@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     telegram_api_url: str | None = None
     telegram_proxy: str | None = None
     telegram_polling: bool = True
+    # Публичный адрес панели (https://…) — для кнопки «Открыть в панели» в сообщениях бота
+    public_url: str | None = None
 
     reminder_days_before: int = Field(default=3, ge=3, le=60)
     reminder_check_interval_seconds: int = Field(default=60, ge=5)

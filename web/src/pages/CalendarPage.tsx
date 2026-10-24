@@ -22,6 +22,7 @@ import { useNavigate } from "react-router";
 import { api, unwrap, type Currency, type Schemas } from "../api/client";
 import { useMeta } from "../api/hooks";
 import { ErrorAlert, PageHeader } from "../components/common";
+import { useIsMobile } from "../components/OccurrenceList";
 import { CURRENCIES, formatMoney, stateView } from "../lib/format";
 
 type Item = Schemas["ForecastItemOut"];
@@ -114,7 +115,7 @@ function MonthGrid({ month, items, today }: { month: Dayjs; items: Item[]; today
                     <Chip
                       key={`${item.recurring_payment_id}-${item.due_date}`}
                       item={item}
-                      onClick={() => navigate(`/payments?payment=${item.recurring_payment_id}`)}
+                      onClick={() => navigate(`/payments?tab=all&payment=${item.recurring_payment_id}`)}
                     />
                   ))}
                 </Stack>
@@ -124,6 +125,38 @@ function MonthGrid({ month, items, today }: { month: Dayjs; items: Item[]; today
         </SimpleGrid>
       </Box>
     </Box>
+  );
+}
+
+/** На телефоне вместо сетки — список по дням. */
+function MonthAgenda({ items, today }: { items: Item[]; today: string }) {
+  const navigate = useNavigate();
+  if (!items.length) {
+    return (
+      <Text c="dimmed" ta="center" py="xl">
+        В этом месяце платежей нет
+      </Text>
+    );
+  }
+  const days = [...new Set(items.map((i) => i.due_date))];
+  return (
+    <Stack gap="sm">
+      {days.map((day) => (
+        <div key={day}>
+          <Text size="sm" fw={700} c={day === today ? "blue" : undefined} mb={4}>
+            {dayjs(day).format("D MMMM, dddd")}
+            {day === today ? " — сегодня" : ""}
+          </Text>
+          <Stack gap={4}>
+            {items
+              .filter((i) => i.due_date === day)
+              .map((item) => (
+                <Chip key={`${item.recurring_payment_id}-${item.due_date}`} item={item} onClick={() => navigate(`/payments?tab=all&payment=${item.recurring_payment_id}`)} />
+              ))}
+          </Stack>
+        </div>
+      ))}
+    </Stack>
   );
 }
 
@@ -222,6 +255,7 @@ function YearBudget({ year }: { year: number }) {
 }
 
 export function CalendarPage() {
+  const isMobile = useIsMobile();
   const meta = useMeta();
   const today = meta.data?.today ?? dayjs().format("YYYY-MM-DD");
   const [month, setMonth] = useState(() => dayjs(today).startOf("month"));
@@ -234,7 +268,7 @@ export function CalendarPage() {
     <>
       <PageHeader
         title="Календарь оплат"
-        description="Реальные периоды и плановые сроки по графикам регулярных платежей"
+        description="Когда и сколько платить: отмеченные оплаты и будущие сроки по графику"
         actions={
           <SegmentedControl
             value={view}
@@ -272,7 +306,13 @@ export function CalendarPage() {
                 <Badge variant="light" color="gray">по графику</Badge>
               </Group>
             </Group>
-            {data.isLoading ? <Skeleton h={480} /> : <MonthGrid month={month} items={data.data?.items ?? []} today={today} />}
+            {data.isLoading ? (
+              <Skeleton h={480} />
+            ) : isMobile ? (
+              <MonthAgenda items={data.data?.items ?? []} today={today} />
+            ) : (
+              <MonthGrid month={month} items={data.data?.items ?? []} today={today} />
+            )}
           </Card>
           {data.data && (
             <>
