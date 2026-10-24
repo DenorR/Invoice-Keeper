@@ -251,6 +251,31 @@ spin() {
   ui_done "$title" "$note$( (( took >= 2 )) && printf ' за %s' "$(human_time "$took")")"
 }
 
+strip_ansi() { sed 's/\x1b\[[0-9;]*m//g' <<<"$1"; }
+repeat_char() { local line; printf -v line '%*s' "$2" ''; printf '%s' "${line// /$1}"; }
+
+ui_table() {  # ui_table "Название|Значение" … ; строка "---" — разделитель
+  local row key value plain w1=0 w2=0
+  for row in "$@"; do
+    [[ $row == --- ]] && continue
+    key=${row%%|*}; plain=$(strip_ansi "${row#*|}")
+    (( ${#key} > w1 )) && w1=${#key}
+    (( ${#plain} > w2 )) && w2=${#plain}
+  done
+  local bar_prefix="${GRAY}${BAR_CHAR}${RESET}  "
+  printf '%s%s\n' "$bar_prefix" "${GRAY}┌$(repeat_char ─ $((w1 + 2)))┬$(repeat_char ─ $((w2 + 2)))┐${RESET}"
+  for row in "$@"; do
+    if [[ $row == --- ]]; then
+      printf '%s%s\n' "$bar_prefix" "${GRAY}├$(repeat_char ─ $((w1 + 2)))┼$(repeat_char ─ $((w2 + 2)))┤${RESET}"
+      continue
+    fi
+    key=${row%%|*}; value=${row#*|}; plain=$(strip_ansi "$value")
+    printf '%s%s %s%*s %s %s%*s %s\n' "$bar_prefix" "${GRAY}│${RESET}" "$key" $((w1 - ${#key})) '' "${GRAY}│${RESET}" \
+      "$value" $((w2 - ${#plain})) '' "${GRAY}│${RESET}"
+  done
+  printf '%s%s\n' "$bar_prefix" "${GRAY}└$(repeat_char ─ $((w1 + 2)))┴$(repeat_char ─ $((w2 + 2)))┘${RESET}"
+}
+
 human_time() { local s=$1; (( s >= 60 )) && printf '%d мин %d с' $(( s / 60 )) $(( s % 60 )) || printf '%d с' "$s"; }
 
 # ═════════════════════════════ утилиты ═════════════════════════════
@@ -291,6 +316,14 @@ valid_timezone() { [[ ! -d /usr/share/zoneinfo || -f /usr/share/zoneinfo/$1 ]]; 
 has_global_ipv6() { ip -6 route get 2001:4860:4860::8888 >/dev/null 2>&1 && ip -6 addr show scope global 2>/dev/null | grep -q inet6; }
 docker_major() { docker version --format '{{.Server.Version}}' 2>/dev/null | cut -d. -f1; }
 compose() { (cd "$INSTALL_DIR" && docker compose "$@"); }
+admin_logins() {  # основной администратор и логины из ADMINS — без паролей
+  local item items=()
+  printf '%s\n' "$(env_get ADMIN_LOGIN)"
+  IFS=',' read -ra items <<<"$(env_get ADMINS)"
+  for item in "${items[@]}"; do item=${item%%:*}; item=${item// /}; [[ -n $item ]] && printf '%s\n' "${item,,}"; done
+  return 0
+}
+
 project_running() { [[ -f $INSTALL_DIR/.env ]] && [[ -n $(compose ps -q app 2>/dev/null || true) ]]; }
 
 # ═════════════════════════════ Telegram ═════════════════════════════
@@ -377,26 +410,26 @@ step_admin() {
 
   if [[ $ASSUME_YES -eq 1 ]]; then
     [[ -n ${ADMIN_PASSWORD:-} ]] || ADMIN_PASSWORD=$(gen_password 16)
-    ui_done "Пароль администратора" "задан (посмотреть: invoice-keeper credentials)"; return
+    ui_done "Пароль администратора" "задан (хранится в $INSTALL_DIR/.env)"; return
   fi
-  local choice keep=()
-  [[ -n ${ADMIN_PASSWORD:-} ]] && keep=(keep "Оставить текущий")
-  ask_select choice "Пароль администратора" "$([[ -n ${ADMIN_PASSWORD:-} ]] && echo keep || echo manual)" \
-    "${keep[@]}" manual "Ввести свой" generate "Сгенерировать надёжный (посмотреть потом: invoice-keeper credentials)"
-  case $choice in
-    keep) ;;
-    generate) ADMIN_PASSWORD=$(gen_password 16) ;;
-    manual)
-      local first second
-      while true; do
-        ask_secret first "Новый пароль" "Не короче 8 символов. В конце установки он не показывается."
-        if (( ${#first} < 8 )); then ui_warn "Слишком короткий пароль" "Нужно хотя бы 8 символов — введите ещё раз."; continue; fi
-        ask_secret second "Повторите пароль"
-        [[ $first == "$second" ]] && break
-        ui_warn "Пароли не совпали" "Введите ещё раз."
-      done
-      ADMIN_PASSWORD=$first ;;
-  esac
+  local choice=new
+  if [[ -n ${ADMIN_PASSWORD:-} ]]; then
+    ask_select choice "Пароль администратора" keep keep "Оставить текущий" new "Задать новый"
+  fi
+  [[ $choice == new ]] && ask_new_password ADMIN_PASSWORD "Пароль администратора"
+  return 0
+}
+
+ask_new_password() {  # ask_new_password ПЕРЕМЕННАЯ "для кого" — ввод дважды, от 8 символов; на экран не выводится
+  local __var=$1 title=$2 first second
+  while true; do
+    ask_secret first "$title" "Не короче 8 символов. Пароль нигде не показывается — запомните его."
+    if (( ${#first} < 8 )); then ui_warn "Слишком короткий пароль" "Нужно хотя бы 8 символов — введите ещё раз."; continue; fi
+    ask_secret second "Повторите пароль"
+    [[ $first == "$second" ]] && break
+    ui_warn "Пароли не совпали" "Введите ещё раз."
+  done
+  printf -v "$__var" '%s' "$first"
 }
 
 step_timezone() {
@@ -531,18 +564,21 @@ step_demo() {
     yes "Загрузить пример — аренда в RUB, сервер в USD, подписка в EUR, просрочка, история" \
     no "Начать с пустой базы"
   SEED_DEMO_DATA=$([[ $choice == yes ]] && echo true || echo false)
+  # Демо-пользователи создаются один раз, при первой загрузке демо в пустую базу.
+  if [[ $SEED_DEMO_DATA == true && ${DEMO_PASSWORD_ASK:-0} == 1 && $ASSUME_YES -eq 0 ]]; then
+    local demo_password
+    ask_new_password demo_password "Пароль демо-пользователей user и accountant"
+    DEMO_USER_PASSWORD=$demo_password DEMO_ACCOUNTANT_PASSWORD=$demo_password
+  fi
+  return 0
 }
 
 step_confirm() {
   local tg="не подключён"
   [[ -n ${TG_TOKEN:-} ]] && tg="@${TG_BOT:-бот}${TG_CHAT:+ → ${TG_CHAT_TITLE:-чат $TG_CHAT}}"
   printf '%s  %s\n' "${CYAN}◆${RESET}" "${BOLD}Проверьте настройки${RESET}"
-  ui_line "Панель          $PUBLIC_URL"
-  ui_line "Администратор   $ADMIN_LOGIN"
-  ui_line "Часовой пояс    $APP_TIMEZONE"
-  ui_line "Telegram        $tg"
-  ui_line "Демо-данные     $([[ $SEED_DEMO_DATA == true ]] && echo да || echo нет)"
-  ui_line "Папка           $INSTALL_DIR"
+  ui_table "Панель|$PUBLIC_URL" "Администратор|$ADMIN_LOGIN" "Часовой пояс|$APP_TIMEZONE" "Telegram|$tg" \
+    "Демо-данные|$([[ $SEED_DEMO_DATA == true ]] && echo да || echo нет)" "Папка|$INSTALL_DIR"
   bar
   ask_confirm "Всё верно, устанавливаем?" yes || cancelled
 }
@@ -726,24 +762,24 @@ start_app() {
 summary() {
   local url token chat tg
   url=$(env_get PUBLIC_URL); token=$(env_get TELEGRAM_BOT_TOKEN); chat=$(env_get TELEGRAM_CHAT_ID)
-  if [[ -n $token && -n $chat ]]; then tg="включены${TG_BOT:+ · @$TG_BOT}${TG_CHAT_TITLE:+ → $TG_CHAT_TITLE}"
+  if [[ -n $token && -n $chat ]]; then tg="включены${TG_BOT:+, @$TG_BOT}${TG_CHAT_TITLE:+ → $TG_CHAT_TITLE}"
   elif [[ -n $token ]]; then tg="бот подключён, чат не выбран — invoice-keeper config"
   else tg="Telegram не подключён — invoice-keeper config"; fi
   local users="демо-данные выключены"
   [[ $(env_get SEED_DEMO_DATA) != false ]] && users="user, accountant (демо)"
+  local admins; admins=$(admin_logins | paste -sd, - | sed 's/,/, /g')
 
   printf '%s  %s\n' "${GREEN}◆${RESET}" "${BOLD}${GREEN}Invoice Keeper $(cat "$INSTALL_DIR/VERSION" 2>/dev/null) — ${ACTION_DONE}${RESET}"
   bar
-  ui_line "Панель          ${BOLD}${url}${RESET}"
-  ui_line "Swagger         ${url}/api/v1/docs"
-  ui_line "Администратор   $(env_get ADMIN_LOGIN)"
-  ui_line "Пользователи    $users"
-  ui_line "Пароли          ${CYAN}invoice-keeper credentials${RESET}"
-  ui_line "Напоминания     $tg"
+  ui_table "Панель|${BOLD}${url}${RESET}" "Swagger|${url}/api/v1/docs" "Администраторы|$admins" "Пользователи|$users" \
+    "Напоминания|$tg" --- "Настройки|$INSTALL_DIR/.env" "Журнал установки|$LOG_FILE"
   bar
-  ui_line "Управление      invoice-keeper status · logs · backup · config · help"
-  ui_line "Настройки       $INSTALL_DIR/.env"
-  ui_line "Журнал          $LOG_FILE"
+  ui_line "${BOLD}Управление сервером${RESET}"
+  ui_table "invoice-keeper status|состояние и проверка панели" "invoice-keeper logs|журнал приложения" \
+    "invoice-keeper config|изменить настройки" "invoice-keeper admins|администраторы и как их добавить" \
+    "invoice-keeper help|все команды"
+  bar
+  ui_dim "Пароли на экран не выводятся: администратор входит с паролем, заданным в мастере."
   ui_outro "Готово! Откройте панель в браузере."
 }
 
@@ -789,6 +825,7 @@ main() {
       ACTION_DONE=$([[ -f $INSTALL_DIR/.env ]] && echo "перенастроен и запущен" || echo "установлен и запущен")
       ensure_docker
       ui_section "Настройка: $TOTAL_STEPS вопросов"
+      [[ -f $INSTALL_DIR/.env ]] || DEMO_PASSWORD_ASK=1   # новая база — спросим пароль демо-пользователей
       step_admin; step_timezone; step_address; step_telegram; step_demo; step_confirm
       ui_section "Подготовка"
       backup_before_update

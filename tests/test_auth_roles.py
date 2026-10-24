@@ -114,3 +114,37 @@ def test_user_crud_and_conflicts(client, admin):
     assert client.get("/api/v1/auth/me", headers=maria).status_code == 401
     logins = [u["login"] for u in client.get("/api/v1/users", headers=admin).json()]
     assert logins == ["admin"]
+
+
+def test_several_admins_from_env(settings, clock, notifier):
+    from fastapi.testclient import TestClient
+    from pydantic import ValidationError
+
+    from app.config import Settings
+    from app.main import create_app
+
+    def make(admins):
+        data = {**settings.model_dump(), "admin_password": ADMIN[1], "admins": admins}
+        return Settings(_env_file=None, **data)
+
+    with TestClient(create_app(make("Anna:Anna-pass-1, oleg:Oleg:pass:2"), clock=clock, notifier=notifier,
+                               start_background=False)) as client:
+        anna = login(client, "anna", "Anna-pass-1")
+        login(client, "oleg", "Oleg:pass:2")  # в пароле может быть двоеточие
+        users = {u["login"]: u for u in client.get("/api/v1/users", headers=anna).json()}
+        assert {"admin", "anna", "oleg"} <= set(users)
+        assert all(users[name]["managed_by_env"] for name in ("admin", "anna", "oleg"))
+        # дополнительный администратор тоже неизменяем через API, его логин занят
+        assert client.patch(f"/api/v1/users/{users['oleg']['id']}", headers=anna, json={"name": "x"}).status_code == 403
+        assert client.post("/api/v1/users", headers=anna, json={"login": "oleg", "password": "x1234567"}).status_code == 409
+
+    # убрали Олега из .env → после перезапуска у него нет доступа, остальные работают
+    with TestClient(create_app(make("anna:Anna-pass-1"), clock=clock, notifier=notifier,
+                               start_background=False)) as client:
+        assert client.post("/api/v1/auth/login", json={"login": "oleg", "password": "Oleg:pass:2"}).status_code == 401
+        login(client, "anna", "Anna-pass-1")
+        login(client, *ADMIN)
+
+    for bad in ("anna", "an:Long-pass-1", "anna:short", "anna:Anna-pass-1,anna:Other-pass-2", f"{ADMIN[0]}:Some-pass-1"):
+        with pytest.raises(ValidationError):
+            make(bad)

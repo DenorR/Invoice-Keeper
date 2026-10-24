@@ -21,34 +21,45 @@ def normalize_login(login: str) -> str:
     return login.strip().lower()
 
 
-def ensure_admin(db: Session, settings: Settings) -> User:
-    """Синхронизирует администратора с .env при каждом старте."""
-    password = settings.admin_password.get_secret_value()
-    if password == DEFAULT_ADMIN_PASSWORD:
+def ensure_admins(db: Session, settings: Settings) -> list[User]:
+    """Приводит администраторов в базе к списку из .env (ADMIN_LOGIN + ADMINS) при каждом старте.
+
+    Новые создаются, у изменившихся обновляется пароль и сбрасываются сессии,
+    убранные из .env удаляются (их отметки об оплате остаются в истории).
+    """
+    if settings.admin_password.get_secret_value() == DEFAULT_ADMIN_PASSWORD:
         log.warning("ADMIN_PASSWORD имеет значение по умолчанию — смените его в .env")
+    wanted = dict(settings.admin_accounts)
 
-    holder = db.scalar(select(User).where(User.login == settings.admin_login))
-    if holder is not None and not holder.is_admin:
-        raise SystemExit(
-            f"ADMIN_LOGIN={settings.admin_login} уже занят обычным пользователем. "
-            "Укажите другой логин администратора в .env."
-        )
+    for login in wanted:
+        holder = db.scalar(select(User).where(User.login == login))
+        if holder is not None and not holder.is_admin:
+            raise SystemExit(
+                f"Логин администратора «{login}» уже занят обычным пользователем. "
+                "Укажите другой логин в .env (ADMIN_LOGIN или ADMINS)."
+            )
 
-    admin = db.scalar(select(User).where(User.role == "admin"))
-    if admin is None:
-        admin = User(login=settings.admin_login, name="Администратор", role="admin",
-                     password_hash=hash_password(password))
-        db.add(admin)
-        db.flush()
-        return admin
-
-    changed = admin.login != settings.admin_login or not verify_password(password, admin.password_hash)
-    if changed:
-        admin.login = settings.admin_login
-        admin.password_hash = hash_password(password)
-        db.execute(delete(AuthSession).where(AuthSession.user_id == admin.id))
-        log.info("Учётные данные администратора обновлены из .env, его сессии сброшены")
-    return admin
+    existing = {user.login: user for user in db.scalars(select(User).where(User.role == "admin")).all()}
+    result = []
+    for login, password in wanted.items():
+        user = existing.get(login)
+        if user is None:
+            name = "Администратор" if login == settings.admin_login else None
+            user = User(login=login, name=name, role="admin", password_hash=hash_password(password))
+            db.add(user)
+            log.info("Администратор «%s» добавлен из .env", login)
+        elif not verify_password(password, user.password_hash):
+            user.password_hash = hash_password(password)
+            db.execute(delete(AuthSession).where(AuthSession.user_id == user.id))
+            log.info("Пароль администратора «%s» обновлён из .env, его сессии сброшены", login)
+        result.append(user)
+    for login, user in existing.items():
+        if login not in wanted:
+            db.execute(delete(AuthSession).where(AuthSession.user_id == user.id))
+            db.delete(user)
+            log.info("Администратор «%s» убран из .env — доступ закрыт", login)
+    db.flush()
+    return result
 
 
 def list_users(db: Session) -> list[User]:
@@ -63,7 +74,7 @@ def get_user(db: Session, user_id: int) -> User:
 
 
 def _ensure_login_free(db: Session, login: str, settings: Settings, exclude_id: int | None = None) -> None:
-    if login == settings.admin_login:
+    if login in settings.admin_logins:
         raise conflict("login_taken", "Этот логин зарезервирован за администратором")
     existing = db.scalar(select(User).where(User.login == login))
     if existing is not None and existing.id != exclude_id:
