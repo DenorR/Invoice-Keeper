@@ -1,0 +1,25 @@
+# Сервер (VPS) с HTTPS:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# В .env укажите DOMAIN (например 203.0.113.10.sslip.io) и COOKIE_SECURE=true.
+services:
+  app:
+    ports: !reset []   # наружу приложение не публикуется — только через Caddy
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?укажите DOMAIN в .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  caddy-data:
+  caddy-config:

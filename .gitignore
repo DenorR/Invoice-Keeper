@@ -1,0 +1,27 @@
+# окружение и секреты
+.env
+.venv/
+venv/
+
+# данные
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# фронт
+web/node_modules/
+web/dist/
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
+
+# материалы кейса организаторов
+*.pdf

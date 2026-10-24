@@ -1,0 +1,23 @@
+body {
+  background: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8));
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.row-muted td {
+  opacity: 0.6;
+}
+
+.nav-link[data-active] {
+  font-weight: 600;
+}
+
+.mantine-Badge-root {
+  text-transform: none;
+}
