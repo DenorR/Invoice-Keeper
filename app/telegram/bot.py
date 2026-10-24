@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import timedelta
 from html import escape
@@ -186,3 +187,21 @@ def create_dispatcher(router: Router) -> Dispatcher:
     dispatcher = Dispatcher()
     dispatcher.include_router(router)
     return dispatcher
+
+
+async def run_polling(dispatcher: Dispatcher, bot: Bot) -> None:
+    """Приём команд и нажатий кнопок. Если Telegram недоступен — пишем в лог и переподключаемся."""
+    delay = 5
+    while True:
+        try:
+            me = await bot.get_me()
+            log.info("Telegram-бот @%s подключён", me.username)
+            delay = 5
+            await dispatcher.start_polling(bot, handle_signals=False, close_bot_session=False)
+            return
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.error("Нет связи с Telegram (%s: %s) — повтор через %s с", type(exc).__name__, exc, delay)
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 300)

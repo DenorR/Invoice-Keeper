@@ -20,6 +20,12 @@ services:
       - caddy-data:/data
       - caddy-config:/config
 
+# IPv6 для контейнеров: на части VPS Telegram API доступен только по IPv6
+# (так на нашем стенде — по IPv4 api.telegram.org заблокирован).
+networks:
+  default:
+    enable_ipv6: true
+
 volumes:
   caddy-data:
   caddy-config:
