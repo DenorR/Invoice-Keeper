@@ -1,0 +1,8 @@
+# Секреты. Скопируйте и зашифруйте:
+#   cp group_vars/invoice_keeper/vault.yml.example group_vars/invoice_keeper/vault.yml
+#   ansible-vault encrypt group_vars/invoice_keeper/vault.yml
+# Править потом:  ansible-vault edit group_vars/invoice_keeper/vault.yml
+vault_ik_admin_password: "замените-на-надёжный-пароль"
+vault_ik_prod_1_bot_token: "1234567890:AAH..."
+vault_ik_prod_2_bot_token: "2345678901:AAG..."
+vault_ik_demo_password: "демо-пароль-8+"

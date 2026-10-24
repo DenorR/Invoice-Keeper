@@ -1,0 +1,59 @@
+---
+# Роль invoice_keeper: разворачивает Invoice Keeper на сервере (Docker Compose).
+# Все настройки приложения попадают в .env на сервере — он целиком генерируется из этих переменных.
+
+# ─── релиз ───
+# Артефакт релиза — самораспаковывающийся файл deploy-kit/invoice-keeper-<версия>.run
+# (собирается scripts/build-installer.sh). Роль только распаковывает его (--extract), мастер не запускается.
+ik_release: "{{ lookup('ansible.builtin.fileglob', playbook_dir ~ '/../deploy-kit/invoice-keeper-*.run', wantlist=True) | first | default('') }}"
+ik_version: "{{ ik_release | basename | replace('invoice-keeper-', '') | replace('.run', '') }}"
+
+# ─── размещение ───
+ik_install_dir: /opt/invoice-keeper
+ik_project: "{{ ik_install_dir | basename }}"           # имя проекта Docker Compose и префикс systemd-юнитов
+ik_cli_link: /usr/local/bin/invoice-keeper             # команда управления на сервере
+ik_release_cache: "/var/cache/{{ ik_project }}"
+
+# ─── суперадмин (единственный администратор) ───
+ik_admin_login: admin
+ik_admin_password: ""                                  # обязательно; храните в Ansible Vault
+
+# ─── адрес панели ───
+ik_access_mode: https                                  # https — Caddy + Let's Encrypt; http — без шифрования
+ik_domain: "{{ ansible_default_ipv4.address }}.sslip.io"   # для https: свой домен или IP.sslip.io
+ik_http_port: 80                                       # для http
+ik_http_host: "{{ ansible_default_ipv4.address }}"
+ik_public_url: >-
+  {{ ('https://' ~ ik_domain) if ik_access_mode == 'https'
+     else ('http://' ~ ik_http_host ~ ('' if (ik_http_port | int) == 80 else ':' ~ ik_http_port)) }}
+
+# ─── приложение ───
+ik_timezone: Europe/Moscow
+ik_session_ttl_hours: 168
+ik_reminder_days_before: 3
+ik_reminder_check_interval_seconds: 60
+ik_log_level: INFO
+
+# ─── Telegram (у каждого экземпляра — свой бот: один токен нельзя запускать в двух местах) ───
+ik_telegram_bot_token: ""
+ik_telegram_chat_id: ""
+ik_telegram_proxy: ""
+ik_telegram_api_url: ""
+ik_telegram_polling: true
+
+# ─── демо-данные (загружаются только в пустую базу) ───
+ik_seed_demo_data: false
+ik_demo_user_password: ""                              # обязательно при ik_seed_demo_data: true
+ik_demo_accountant_password: ""
+
+# Любые другие переменные .env: { ИМЯ: значение }
+ik_env_extra: {}
+
+# ─── инфраструктура ───
+ik_manage_docker: true                                 # поставить Docker и Compose, если их нет
+ik_manage_firewall: true                               # открыть порты в ufw, если он включён
+ik_ssh_port: "{{ ansible_port | default(22) }}"
+ik_ipv6: auto                                          # IPv6 в сети контейнеров: auto | true | false
+ik_backups: true                                       # ночные резервные копии (systemd-таймер)
+ik_backup_time: "03:00"
+ik_verify_url: true                                    # в конце проверить, что панель открывается по ik_public_url

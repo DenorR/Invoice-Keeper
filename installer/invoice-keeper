@@ -143,9 +143,10 @@ cmd_backup() {
     return
   fi
   running || die "Приложение не запущено: invoice-keeper start"
-  local file
-  file=$(ik_backup manual) || die "Не удалось сделать копию — invoice-keeper logs"
-  ik_prune manual 20
+  local file kind=manual keep=20
+  [[ ${1:-} == --before-update ]] && kind=before-update keep=5   # перед обновлением (Ansible, установщик)
+  file=$(ik_backup "$kind") || die "Не удалось сделать копию — invoice-keeper logs"
+  ik_prune "$kind" "$keep"
   ok "Резервная копия: $file ($(human_size "$file")), целостность проверена"
 }
 
@@ -279,7 +280,14 @@ case "${1:-help}" in
   start) need_root start; compose up -d >/dev/null 2>&1; ok "Запущено" ;;
   stop) need_root stop; compose stop >/dev/null 2>&1; ok "Остановлено" ;;
   restart) cmd_restart ;;
-  config|configure) need_root config; INSTALL_DIR="$INSTALL_DIR" exec bash "$INSTALL_DIR/installer/setup.sh" --reconfigure "${@:2}" ;;
+  config|configure)
+    need_root config
+    if grep -q '^# managed-by: ansible' "$ENV_FILE" 2>/dev/null; then
+      warn "Настройки этого сервера управляются Ansible: следующий прогон плейбука перезапишет изменения."
+      note "Меняйте значения в inventory / Vault и запускайте ansible-playbook."
+      confirm "Всё равно открыть мастер?" || exit 1
+    fi
+    INSTALL_DIR="$INSTALL_DIR" exec bash "$INSTALL_DIR/installer/setup.sh" --reconfigure "${@:2}" ;;
   backup) cmd_backup "${2:-}" ;;
   backups) cmd_backups ;;
   restore) cmd_restore "${2:-}" ;;

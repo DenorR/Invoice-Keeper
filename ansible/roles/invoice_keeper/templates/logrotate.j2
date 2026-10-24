@@ -1,0 +1,9 @@
+# managed-by: ansible
+/var/log/{{ ik_project }}-backup.log {
+    monthly
+    rotate 6
+    compress
+    missingok
+    notifempty
+    create 600 root root
+}

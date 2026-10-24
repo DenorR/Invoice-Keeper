@@ -1,0 +1,17 @@
+---
+- name: Состояние ufw
+  ansible.builtin.command: ufw status
+  check_mode: false     # только чтение — выполняется и в режиме --check
+  register: ik_ufw
+  changed_when: false
+  failed_when: false
+
+- name: Открыть порты в ufw
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop: "{{ [ik_ssh_port | string] + (['80', '443'] if ik_access_mode == 'https' else [ik_http_port | string]) }}"
+  when:
+    - ik_ufw.rc == 0
+    - "'Status: active' in ik_ufw.stdout"

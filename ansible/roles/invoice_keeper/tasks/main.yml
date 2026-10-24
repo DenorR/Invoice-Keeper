@@ -1,0 +1,30 @@
+---
+- name: Проверка параметров
+  ansible.builtin.import_tasks: assert.yml
+  tags: [always]
+
+- name: Docker
+  ansible.builtin.import_tasks: docker.yml
+  tags: [docker]
+
+- name: Файлы версии
+  ansible.builtin.import_tasks: release.yml
+  tags: [release]
+
+- name: Настройки и запуск
+  ansible.builtin.import_tasks: service.yml
+  tags: [config, service]
+
+- name: Резервные копии
+  ansible.builtin.import_tasks: backups.yml
+  when: ik_backups | bool
+  tags: [backups]
+
+- name: Брандмауэр
+  ansible.builtin.import_tasks: firewall.yml
+  when: ik_manage_firewall | bool
+  tags: [firewall]
+
+- name: Проверка
+  ansible.builtin.import_tasks: verify.yml
+  tags: [verify]

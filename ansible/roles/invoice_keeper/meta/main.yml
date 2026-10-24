@@ -1,0 +1,13 @@
+---
+galaxy_info:
+  role_name: invoice_keeper
+  author: Invoice Keeper team
+  description: Invoice Keeper — напоминания о регулярных платежах (веб-панель, API, Telegram-бот) в Docker Compose
+  license: proprietary
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+    - name: Debian
+      versions: [bookworm]
+dependencies: []

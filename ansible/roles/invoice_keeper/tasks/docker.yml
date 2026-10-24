@@ -1,0 +1,70 @@
+---
+- name: Docker Compose уже установлен?
+  ansible.builtin.command: docker compose version --short
+  check_mode: false     # только чтение — выполняется и в режиме --check
+  register: ik_compose_check
+  changed_when: false
+  failed_when: false
+
+- name: Установить Docker и Compose из репозитория Ubuntu
+  ansible.builtin.apt:
+    name: [docker.io, docker-compose-v2, docker-buildx]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when:
+    - ik_manage_docker | bool
+    - ik_compose_check.rc != 0
+    - ansible_distribution == 'Ubuntu'
+
+- name: Установить Docker и Compose из репозитория Docker (Debian)
+  when:
+    - ik_manage_docker | bool
+    - ik_compose_check.rc != 0
+    - ansible_distribution == 'Debian'
+  block:
+    - name: Ключ репозитория Docker
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/debian/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    - name: Репозиторий Docker
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [arch={{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_architecture] | default(ansible_architecture) }}
+          signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable
+        filename: docker
+
+    - name: Пакеты Docker
+      ansible.builtin.apt:
+        name: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin]
+        state: present
+        update_cache: true
+
+- name: Docker запущен и стартует вместе с системой
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Версия Docker
+  ansible.builtin.command: docker --version
+  check_mode: false
+  register: ik_docker_version
+  failed_when: false    # в режиме --check на сервере без Docker его ещё нет
+  changed_when: false
+
+- name: Набор файлов Docker Compose
+  ansible.builtin.set_fact:
+    ik_compose_files: >-
+      {{ ['docker-compose.yml']
+         + (['docker-compose.prod.yml'] if ik_access_mode == 'https' else [])
+         + (['docker-compose.ipv6.yml'] if ik_ipv6_enabled | bool else []) }}
+  vars:
+    # IPv6 в сети контейнеров нужен, когда Telegram доступен с сервера только по IPv6 (требуется Docker 27+)
+    ik_ipv6_enabled: >-
+      {{ (ik_ipv6 | string | lower in ['true', 'yes', '1'])
+         or (ik_ipv6 | string | lower == 'auto'
+             and (ansible_default_ipv6.address | default('')) | length > 0
+             and ((ik_docker_version.stdout.split() + ['', '', '0'])[2].split('.')[0] | int) >= 27) }}

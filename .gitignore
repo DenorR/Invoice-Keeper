@@ -25,3 +25,7 @@ web/dist/
 
 # материалы кейса организаторов
 *.pdf
+
+# Ansible: реальные inventory и секреты
+ansible/inventory.yml
+ansible/group_vars/*/vault.yml

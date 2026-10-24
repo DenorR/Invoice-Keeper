@@ -20,7 +20,8 @@ Swagger: https://217.144.184.217.sslip.io/api/v1/docs. Учётные данны
 | `.env.example` без секретов | [`.env.example`](.env.example): все настройки с пояснениями, пароли и токены не заполнены |
 | Тестовые данные | загружаются сами при первом запуске: аренда в RUB, сервер в USD, подписка в EUR, просрочка и история оплат — см. [«Сценарий демонстрации»](#сценарий-демонстрации); код — [`app/seed.py`](app/seed.py), пересоздать — `python -m app reset-db` |
 | OpenAPI и Swagger | [`openapi.yaml`](openapi.yaml) и `/api/v1/docs` в запущенном приложении |
-| Установка на сервер (дополнительно) | [`deploy-kit/`](deploy-kit/): один файл-установщик с мастером настройки и инструкцией |
+| Развёртывание на серверы | [`ansible/`](ansible/): роль Ansible — инфраструктура кодом, любое число серверов, идемпотентно |
+| Установка на сервер вручную | [`deploy-kit/`](deploy-kit/): один файл-установщик с мастером настройки и подробной инструкцией |
 
 ---
 
@@ -330,28 +331,51 @@ npm run build      # сборка в app/static
 
 ## Развёртывание на сервере (HTTPS)
 
-### Установщик одним файлом (рекомендуется)
+Три способа, результат одинаковый. Во всех **суперадмин задаётся только в `.env`**
+(`ADMIN_LOGIN`, `ADMIN_PASSWORD`) — приложение создаёт его при старте, API для этого не нужен.
 
-В папке [`deploy-kit/`](deploy-kit/) лежит `invoice-keeper-1.4.0.run`: приложение и мастер настройки в одном файле.
+### Ansible (рекомендуется для серверов)
+
+Роль [`ansible/roles/invoice_keeper`](ansible/roles/invoice_keeper) ставит Docker, раскладывает релиз,
+генерирует `.env` из переменных (секреты — в Ansible Vault), запускает приложение с HTTPS,
+включает ночные копии и проверяет, что панель открывается. Каждый сервер из inventory — независимый
+экземпляр; повторный прогон без изменений ничего не трогает, новая версия — обновление с копией базы.
+
+```bash
+cd ansible
+ansible-galaxy collection install -r requirements.yml
+cp inventory.example.yml inventory.yml                       # серверы и их настройки
+cp group_vars/invoice_keeper/vault.yml.example group_vars/invoice_keeper/vault.yml
+ansible-vault encrypt group_vars/invoice_keeper/vault.yml    # пароль суперадмина, токены ботов
+ansible-playbook site.yml --ask-vault-pass
+```
+
+Подробно: [`ansible/README.md`](ansible/README.md).
+
+### Установщик одним файлом
+
+В папке [`deploy-kit/`](deploy-kit/) лежит `invoice-keeper-1.5.0.run`: приложение и мастер настройки в одном файле.
 Подробная инструкция: [`deploy-kit/README.md`](deploy-kit/README.md).
 
 ```bash
-# на своём компьютере, из корня репозитория (в Windows путь — deploy-kit\invoice-keeper-1.4.0.run)
-scp deploy-kit/invoice-keeper-1.4.0.run root@IP_СЕРВЕРА:
+# на своём компьютере, из корня репозитория (в Windows путь — deploy-kit\invoice-keeper-1.5.0.run)
+scp deploy-kit/invoice-keeper-1.5.0.run root@IP_СЕРВЕРА:
 # подключиться к серверу и запустить установщик уже там
 ssh root@IP_СЕРВЕРА
-bash invoice-keeper-1.4.0.run
+bash invoice-keeper-1.5.0.run
 ```
 
-Мастер работает прямо в терминале (выбор стрелками, видно каждый шаг) и спросит пароль администратора, часовой пояс, адрес (HTTPS на `IP.sslip.io` или своём домене)
-и Telegram: проверит токен, сам найдёт рабочий чат и пришлёт пробное сообщение. Затем поставит Docker
+Мастер работает прямо в терминале (выбор стрелками, видно каждый шаг). Суперадмина он не спрашивает:
+открывает `.env`, чтобы вписать `ADMIN_LOGIN` и `ADMIN_PASSWORD`. Затем спрашивает часовой пояс,
+адрес (HTTPS на `IP.sslip.io` или своём домене) и Telegram: проверит токен, сам найдёт рабочий чат
+и пришлёт пробное сообщение. Без вопросов: заполненный `/opt/invoice-keeper/.env` и `--yes`. Затем поставит Docker
 (если его нет), запустит приложение с HTTPS и проверит, что оно отвечает. После установки сервером
 управляет команда `invoice-keeper` (`status`, `logs`, `backup`, `config`, `help`…). Повторный запуск
 нового `.run` обновляет приложение, сохраняя настройки и данные.
 
 Резервные копии базы делаются каждую ночь (systemd-таймер, хранятся 7 ежедневных и 4 еженедельных,
 каждая проверяется на целостность). Для переноса на другой сервер `invoice-keeper export` создаёт
-зашифрованный архив (база + `.env`, AES-256), а `bash invoice-keeper-1.4.0.run --import архив.ikb`
+зашифрованный архив (база + `.env`, AES-256), а `bash invoice-keeper-1.5.0.run --import архив.ikb`
 разворачивает его на новом сервере. Подробно — в [`deploy-kit/README.md`](deploy-kit/README.md).
 
 Собрать установщик из текущего кода: `scripts/build-installer.sh`; собрать, скопировать и запустить
@@ -361,10 +385,14 @@ bash invoice-keeper-1.4.0.run
 
 ```bash
 git clone <репозиторий> invoice-keeper && cd invoice-keeper
-cp .env.example .env    # ADMIN_PASSWORD, DEMO_*_PASSWORD, TELEGRAM_*, COOKIE_SECURE=true, DOMAIN=<IP>.sslip.io
+cp .env.example .env    # ADMIN_LOGIN/ADMIN_PASSWORD, DEMO_*_PASSWORD, TELEGRAM_*, COOKIE_SECURE=true, DOMAIN=<IP>.sslip.io
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 # если Telegram с сервера доступен только по IPv6 — добавьте -f docker-compose.ipv6.yml
 ```
 
 Caddy сам получает сертификат Let's Encrypt; приложение наружу не публикуется.
 Данные хранятся в Docker-томе `ik-data`.
+
+> Docker Compose подставляет переменные вместо `$` в значениях `.env` и отрезает ` #комментарий`.
+> Если в пароле или токене есть `$`, `#` или пробел — возьмите значение в одинарные кавычки:
+> `ADMIN_PASSWORD='Pa$s #1'`. Установщик и роль Ansible делают это сами.

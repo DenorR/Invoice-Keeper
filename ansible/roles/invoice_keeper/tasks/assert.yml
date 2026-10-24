@@ -1,0 +1,29 @@
+---
+- name: Проверить параметры
+  ansible.builtin.assert:
+    that: item.ok | bool
+    fail_msg: "{{ item.msg }}"
+    quiet: true
+  loop:
+    - ok: "{{ ik_release | length > 0 }}"
+      msg: "Не найден релиз deploy-kit/invoice-keeper-*.run — соберите его (scripts/build-installer.sh) или укажите ik_release"
+    - ok: "{{ ik_admin_login is match('^[a-z0-9_.-]{3,64}$') }}"
+      msg: "ik_admin_login: 3–64 символа — строчная латиница, цифры, точка, дефис, подчёркивание"
+    - ok: "{{ (ik_admin_password | length) >= 8 and ik_admin_password != 'change-me' and 'замените' not in ik_admin_password }}"
+      msg: "ik_admin_password: пароль суперадмина обязателен, от 8 символов (храните его в Ansible Vault)"
+    - ok: "{{ ik_access_mode in ['https', 'http'] }}"
+      msg: "ik_access_mode: https или http"
+    - ok: "{{ ik_access_mode == 'http' or (ik_domain | length > 0) }}"
+      msg: "ik_domain: для https нужен домен (свой или IP.sslip.io)"
+    - ok: "{{ not (ik_seed_demo_data | bool) or ((ik_demo_user_password | length) >= 6 and (ik_demo_accountant_password | length) >= 6) }}"
+      msg: "ik_demo_user_password / ik_demo_accountant_password: при ik_seed_demo_data: true задайте оба, от 6 символов"
+    - ok: "{{ (ik_reminder_days_before | int) >= 3 }}"
+      msg: "ik_reminder_days_before: не меньше 3 (требование кейса)"
+    - ok: "{{ (ik_telegram_bot_token | length == 0) or (ik_telegram_chat_id | string | length > 0) }}"
+      msg: "ik_telegram_chat_id: при заданном токене бота нужен ID чата (бот покажет его по команде /chatid)"
+    - ok: >-
+        {{ [ik_admin_password, ik_demo_user_password, ik_demo_accountant_password, ik_telegram_bot_token, ik_telegram_proxy]
+           | select('search', "['\n]") | list | length == 0 }}
+      msg: "Пароли, токен и прокси не должны содержать одинарную кавычку и перевод строки"
+  loop_control:
+    label: "{{ item.msg | truncate(70) }}"

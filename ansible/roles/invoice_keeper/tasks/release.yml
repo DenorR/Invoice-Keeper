@@ -1,0 +1,69 @@
+---
+- name: Каталог приложения
+  ansible.builtin.file:
+    path: "{{ ik_install_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Каталог резервных копий (только root)
+  ansible.builtin.file:
+    path: "{{ ik_install_dir }}/backups"
+    state: directory
+    mode: "0700"
+
+- name: Каталог релизов
+  ansible.builtin.file:
+    path: "{{ ik_release_cache }}"
+    state: directory
+    mode: "0700"
+
+- name: Релиз {{ ik_version }} на сервере
+  ansible.builtin.copy:
+    src: "{{ ik_release }}"
+    dest: "{{ ik_release_cache }}/invoice-keeper-{{ ik_version }}.run"
+    mode: "0700"
+  register: ik_release_copy
+
+- name: Установленная версия
+  ansible.builtin.slurp:
+    src: "{{ ik_install_dir }}/VERSION"
+  register: ik_version_file
+  failed_when: false
+
+- name: Нужно ли раскладывать файлы
+  ansible.builtin.set_fact:
+    ik_installed_version: "{{ (ik_version_file.content | default('')) | b64decode | trim }}"
+    ik_update_files: >-
+      {{ ((ik_version_file.content | default('')) | b64decode | trim) != ik_version or ik_release_copy is changed }}
+
+- name: Резервная копия базы перед обновлением
+  ansible.builtin.shell: |
+    set -o pipefail
+    cd {{ ik_install_dir | quote }}
+    if [ -n "$(docker compose ps -q --status running app 2>/dev/null)" ]; then
+      ./installer/invoice-keeper backup --before-update
+    else
+      echo "приложение не запущено — копия не нужна"
+    fi
+  args:
+    executable: /bin/bash
+  when:
+    - ik_update_files | bool
+    - ik_installed_version | length > 0
+  register: ik_pre_update_backup
+  changed_when: "'приложение не запущено' not in ik_pre_update_backup.stdout"
+
+- name: Разложить файлы версии {{ ik_version }}
+  ansible.builtin.shell: |
+    set -euo pipefail
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    bash {{ (ik_release_cache ~ '/invoice-keeper-' ~ ik_version ~ '.run') | quote }} --extract "$tmp" >/dev/null
+    # файлы прошлой версии убираем целиком; настройки и резервные копии не трогаем
+    find {{ ik_install_dir | quote }} -mindepth 1 -maxdepth 1 ! -name .env ! -name '.env.bak*' ! -name backups -exec rm -rf {} +
+    cp -a "$tmp"/. {{ ik_install_dir | quote }}/
+    chmod 755 {{ ik_install_dir | quote }}/installer/invoice-keeper {{ ik_install_dir | quote }}/installer/setup.sh
+  args:
+    executable: /bin/bash
+  when: ik_update_files | bool
+  register: ik_files

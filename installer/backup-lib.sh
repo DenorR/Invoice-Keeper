@@ -7,17 +7,44 @@
 
 IK_SERVER_KEYS=(PUBLIC_URL DOMAIN APP_PORT COOKIE_SECURE COMPOSE_FILE COMPOSE_PROJECT_NAME)
 
-ik_env_get() {  # ik_env_get КЛЮЧ ФАЙЛ
+# Значения в .env записываются так, как их читает Docker Compose: без кавычек Compose подставляет
+# переменные вместо $ и отрезает « #комментарий», поэтому всё, кроме простых символов, берётся в кавычки.
+ik_env_quote() {  # ik_env_quote ЗНАЧЕНИЕ → строка для .env
+  local v=$1
+  if [[ $v =~ ^[A-Za-z0-9_./:@+,=%-]*$ ]]; then printf '%s' "$v"
+  elif [[ $v != *"'"* ]]; then printf "'%s'" "$v"           # одинарные кавычки — всё буквально
+  else
+    v=${v//\\/\\\\}; v=${v//\"/\\\"}; v=${v//\$/\$\$}           # в двойных: \ → \\, " → \", $ → $$
+    printf '"%s"' "$v"
+  fi
+}
+
+ik_env_unquote() {  # обратное к ik_env_quote
+  local v=$1 out="" i c n
+  if [[ ${#v} -ge 2 && $v == \'*\' ]]; then printf '%s' "${v:1:${#v}-2}"; return; fi
+  if [[ ${#v} -ge 2 && $v == \"*\" ]]; then
+    v=${v:1:${#v}-2}
+    for (( i = 0; i < ${#v}; i++ )); do
+      c=${v:i:1}; n=${v:i+1:1}
+      if [[ $c == \\ && ( $n == \\ || $n == \" ) ]] || [[ $c == \$ && $n == \$ ]]; then out+=$n; i=$((i + 1)); else out+=$c; fi
+    done
+    printf '%s' "$out"; return
+  fi
+  printf '%s' "$v"
+}
+
+ik_env_get() {  # ik_env_get КЛЮЧ ФАЙЛ — значение без кавычек
   [[ -f $2 ]] || return 0
-  grep -E "^$1=" "$2" | tail -n 1 | cut -d= -f2- || true
+  ik_env_unquote "$(grep -E "^$1=" "$2" | tail -n 1 | cut -d= -f2- || true)"
 }
 
 ik_env_set() {  # ik_env_set КЛЮЧ ЗНАЧЕНИЕ ФАЙЛ
+  local line; line="$1=$(ik_env_quote "$2")"
   if grep -qE "^$1=" "$3"; then
-    KEY="$1" VALUE="$2" awk -F= '$1 == ENVIRON["KEY"] { print ENVIRON["KEY"] "=" ENVIRON["VALUE"]; next } { print }' \
+    KEY="$1" LINE="$line" awk -F= '$1 == ENVIRON["KEY"] { print ENVIRON["LINE"]; next } { print }' \
       "$3" >"$3.tmp" && cat "$3.tmp" >"$3" && rm -f "$3.tmp"
   else
-    printf '%s=%s\n' "$1" "$2" >>"$3"
+    printf '%s\n' "$line" >>"$3"
   fi
 }
 

@@ -1,0 +1,11 @@
+---
+# Развёртывание и обновление Invoice Keeper на всех серверах группы invoice_keeper.
+#   ansible-playbook site.yml --ask-vault-pass
+# Каждый сервер — независимый экземпляр: своя база, свой суперадмин, свой Telegram-бот.
+# Повторный прогон без изменений ничего не трогает; новая версия в deploy-kit/ — обновление
+# с резервной копией базы; изменённые переменные — новый .env и перезапуск.
+- name: Invoice Keeper
+  hosts: invoice_keeper
+  become: true
+  roles:
+    - invoice_keeper

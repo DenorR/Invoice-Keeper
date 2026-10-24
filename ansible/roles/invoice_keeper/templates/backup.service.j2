@@ -1,0 +1,9 @@
+# managed-by: ansible
+[Unit]
+Description=Invoice Keeper: резервная копия базы
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart={{ ik_install_dir }}/installer/invoice-keeper backup --auto

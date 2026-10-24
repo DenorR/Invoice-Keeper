@@ -283,21 +283,8 @@ ui_table() {  # ui_table "Название|Значение" … ; строка 
 human_time() { local s=$1; (( s >= 60 )) && printf '%d мин %d с' $(( s / 60 )) $(( s % 60 )) || printf '%d с' "$s"; }
 
 # ═════════════════════════════ утилиты ═════════════════════════════
-env_get() {  # env_get КЛЮЧ [файл]
-  local file=${2:-$INSTALL_DIR/.env}
-  [[ -f $file ]] || return 0
-  grep -E "^$1=" "$file" | tail -n 1 | cut -d= -f2- || true
-}
-
-env_set() {  # env_set КЛЮЧ ЗНАЧЕНИЕ файл — заменить строку или дописать
-  local key=$1 value=$2 file=$3
-  if grep -qE "^${key}=" "$file"; then
-    KEY="$key" VALUE="$value" awk -F= '$1 == ENVIRON["KEY"] { print ENVIRON["KEY"] "=" ENVIRON["VALUE"]; next } { print }' \
-      "$file" >"$file.tmp" && cat "$file.tmp" >"$file" && rm -f "$file.tmp"
-  else
-    printf '%s=%s\n' "$key" "$value" >>"$file"
-  fi
-}
+env_get() { ik_env_get "$1" "${2:-$INSTALL_DIR/.env}"; }   # env_get КЛЮЧ [файл]
+env_set() { ik_env_set "$1" "$2" "$3"; }                      # env_set КЛЮЧ ЗНАЧЕНИЕ файл
 
 gen_password() {
   local length=${1:-16}
@@ -399,25 +386,59 @@ wait_for_chat() {
 # ═════════════════════════════ шаги мастера ═════════════════════════════
 TOTAL_STEPS=5
 
-step_admin() {
-  ask_text ADMIN_LOGIN "Шаг 1 из $TOTAL_STEPS · Логин администратора" "${ADMIN_LOGIN:-admin}" \
-    "Задаётся один раз при установке. Изменить потом — только в .env, через панель нельзя."
-  ADMIN_LOGIN=${ADMIN_LOGIN,,}
-  if ! [[ $ADMIN_LOGIN =~ ^[a-z0-9_.-]{3,64}$ ]]; then ui_warn "Логин заменён на admin" "Допустимы латиница, цифры, точка, дефис, подчёркивание (3–64 символа)."; ADMIN_LOGIN=admin; fi
+# Суперадмин (единственный администратор) задаётся только в .env: мастер его не спрашивает,
+# а открывает .env в редакторе. Без вопросов (--yes) он должен быть уже вписан в .env.
+admin_login_ok() { [[ ${ADMIN_LOGIN:-} =~ ^[a-z0-9_.-]{3,64}$ ]]; }
+admin_password_ok() { (( ${#ADMIN_PASSWORD} >= 8 )) && [[ $ADMIN_PASSWORD != change-me ]]; }
 
-  if [[ $ASSUME_YES -eq 1 ]]; then
-    if [[ -z ${ADMIN_PASSWORD:-} ]]; then ADMIN_PASSWORD=$(gen_password 16); ADMIN_PASSWORD_GENERATED=1; fi
-    ui_done "Пароль администратора" "задан (хранится в $INSTALL_DIR/.env)"; return
+prepare_env_template() {  # .env из шаблона, если его ещё нет: туда вписывают суперадмина
+  local env_file="$INSTALL_DIR/.env"
+  [[ -f $env_file ]] && return 0
+  mkdir -p "$INSTALL_DIR"
+  cp "$SOURCE/.env.example" "$env_file"; chmod 600 "$env_file"
+  env_set ADMIN_PASSWORD "" "$env_file"
+  log "создан $env_file из шаблона"
+}
+
+step_admin() {
+  local env_file="$INSTALL_DIR/.env" title="Шаг 1 из $TOTAL_STEPS · Суперадмин"
+  ADMIN_LOGIN=${ADMIN_LOGIN,,}
+  if admin_login_ok && admin_password_ok; then
+    ui_done "$title" "$ADMIN_LOGIN — задан в $env_file (ADMIN_LOGIN, ADMIN_PASSWORD), через панель не меняется"
+    return
   fi
-  local choice keep=()
-  [[ -n ${ADMIN_PASSWORD:-} ]] && keep=(keep "Оставить текущий")
-  ask_select choice "Пароль администратора" "$([[ -n ${ADMIN_PASSWORD:-} ]] && echo keep || echo manual)" \
-    "${keep[@]}" manual "Ввести свой" generate "Сгенерировать надёжный — сохраню в .env, на экран не выведу"
-  case $choice in
-    manual) ask_new_password ADMIN_PASSWORD "Пароль администратора" ;;
-    generate) ADMIN_PASSWORD=$(gen_password 16); ADMIN_PASSWORD_GENERATED=1 ;;
-  esac
-  return 0
+  prepare_env_template
+  if [[ $ASSUME_YES -eq 1 || ! -t 0 || ! -t 1 ]]; then
+    die "Суперадмин не задан" "Впишите ADMIN_LOGIN и ADMIN_PASSWORD (от 8 символов) в $env_file и запустите установщик снова."
+  fi
+  local editor line
+  editor=$(command -v nano || command -v vi || true)
+  [[ -n $editor ]] || die "Не найден редактор nano или vi" "Впишите ADMIN_LOGIN и ADMIN_PASSWORD в $env_file и запустите установщик снова."
+
+  printf '%s  %s\n' "${CYAN}◆${RESET}" "${BOLD}$title${RESET}"
+  ui_line "Суперадмин — единственный администратор. Он задаётся только в файле .env:"
+  ui_line "через панель и API его не создать и не изменить."
+  bar
+  ui_line "Сейчас откроется ${BOLD}$env_file${RESET}"
+  ui_line "  1. Впишите ${BOLD}ADMIN_LOGIN${RESET} и ${BOLD}ADMIN_PASSWORD${RESET} (пароль — от 8 символов)."
+  ui_line "     Если в пароле есть \$, # или пробел — возьмите его в одинарные кавычки: 'пароль'."
+  ui_line "  2. Сохраните — ${BOLD}Ctrl+O${RESET}, затем Enter. Выйдите — ${BOLD}Ctrl+X${RESET}."
+  bar
+  while true; do
+    ask_confirm "Открыть .env?" yes || cancelled
+    line=$(grep -n '^ADMIN_LOGIN=' "$env_file" | head -n 1 | cut -d: -f1)
+    tput cnorm 2>/dev/null || true
+    "$editor" "+${line:-1}" "$env_file" </dev/tty >/dev/tty 2>&1 || true
+    ADMIN_LOGIN=$(env_get ADMIN_LOGIN); ADMIN_LOGIN=${ADMIN_LOGIN,,}; ADMIN_PASSWORD=$(env_get ADMIN_PASSWORD)
+    if ! admin_login_ok; then
+      ui_warn "ADMIN_LOGIN не подходит: «$ADMIN_LOGIN»" "3–64 символа: строчная латиница, цифры, точка, дефис, подчёркивание."
+    elif ! admin_password_ok; then
+      ui_warn "ADMIN_PASSWORD не задан или короче 8 символов" "Откройте файл ещё раз и впишите пароль."
+    else
+      ui_done "$title" "$ADMIN_LOGIN — задан в .env; пароль на экран не выводится"
+      return
+    fi
+  done
 }
 
 ask_new_password() {  # ask_new_password ПЕРЕМЕННАЯ "для кого" — ввод дважды, от 8 символов; на экран не выводится
@@ -680,8 +701,8 @@ drop_legacy_admins() {  # ADMINS из версий 1.2–1.3 больше не �
 
 write_env() {
   local env_file="$INSTALL_DIR/.env"
-  if [[ -f $env_file ]]; then cp -p "$env_file" "$env_file.bak-$(date +%Y%m%d-%H%M%S)"
-  else cp "$INSTALL_DIR/.env.example" "$env_file"; fi
+  if [[ ! -f $env_file ]]; then cp "$INSTALL_DIR/.env.example" "$env_file"
+  elif [[ ${WAS_INSTALLED:-0} -eq 1 ]]; then cp -p "$env_file" "$env_file.bak-$(date +%Y%m%d-%H%M%S)"; fi
   chmod 600 "$env_file"
   drop_legacy_admins
   env_set ADMIN_LOGIN "$ADMIN_LOGIN" "$env_file"
@@ -854,7 +875,6 @@ summary() {
   bar
   local rows=("Панель|${BOLD}${url}${RESET}" "Swagger|${url}/api/v1/docs" "Администратор|$(env_get ADMIN_LOGIN)" "Пользователи|$users"
               "Напоминания|$tg" ---)
-  [[ ${ADMIN_PASSWORD_GENERATED:-0} == 1 ]] && rows+=("Пароль админа|grep ^ADMIN_PASSWORD= $INSTALL_DIR/.env")
   [[ ${DEMO_PASSWORD_GENERATED:-0} == 1 ]] && rows+=("Пароль демо|grep ^DEMO_ $INSTALL_DIR/.env")
   rows+=("Резервные копии|каждую ночь → $INSTALL_DIR/backups" "Настройки|$INSTALL_DIR/.env" "Журнал установки|$LOG_FILE")
   ui_table "${rows[@]}"
@@ -865,11 +885,8 @@ summary() {
     "invoice-keeper backups|резервные копии и перенос" \
     "invoice-keeper help|все команды"
   bar
-  if [[ ${ADMIN_PASSWORD_GENERATED:-0} == 1 || ${DEMO_PASSWORD_GENERATED:-0} == 1 ]]; then
-    ui_dim "Пароли на экран не выводятся. Сгенерированные — в .env (доступ только у root): команды в таблице."
-  else
-    ui_dim "Пароли на экран не выводятся: входите с теми, что задали в мастере."
-  fi
+  ui_dim "Пароли на экран не выводятся. Суперадмин — в $INSTALL_DIR/.env (ADMIN_LOGIN, ADMIN_PASSWORD);"
+  ui_dim "сменить: nano $INSTALL_DIR/.env → invoice-keeper restart."
   ui_outro "Готово! Откройте панель в браузере."
 }
 
@@ -893,16 +910,17 @@ main() {
   PROJECT_NAME=$(basename "$INSTALL_DIR" | tr -cd 'a-z0-9_-'); PROJECT_NAME=${PROJECT_NAME:-invoice-keeper}
 
   local mode current_version=""
+  WAS_INSTALLED=0; [[ -f $INSTALL_DIR/.env && -f $INSTALL_DIR/VERSION ]] && WAS_INSTALLED=1
   [[ -f $INSTALL_DIR/VERSION ]] && current_version=$(<"$INSTALL_DIR/VERSION")
   if [[ -n $IMPORT_FILE ]]; then
     [[ -n $SOURCE ]] || { echo "--import работает только из .run-установщика" >&2; exit 1; }
     [[ -f $IMPORT_FILE ]] || { echo "Архив не найден: $IMPORT_FILE" >&2; exit 1; }
-    if [[ -f $INSTALL_DIR/.env ]]; then
+    if [[ $WAS_INSTALLED -eq 1 ]]; then
       echo "Здесь уже установлен Invoice Keeper. Чтобы восстановить данные из архива: invoice-keeper import $IMPORT_FILE" >&2; exit 1
     fi
     mode=import
   elif [[ -n $SOURCE ]]; then
-    [[ -f $INSTALL_DIR/.env && $RECONFIGURE -eq 0 ]] && mode=update || mode=install
+    [[ $WAS_INSTALLED -eq 1 && $RECONFIGURE -eq 0 ]] && mode=update || mode=install
   else
     [[ -f $INSTALL_DIR/.env ]] || { echo "Invoice Keeper не установлен в $INSTALL_DIR — запустите .run-установщик" >&2; exit 1; }
     mode=reconfigure
@@ -910,7 +928,7 @@ main() {
 
   banner
   case $mode in
-    install) [[ -f $INSTALL_DIR/.env ]] && ui_intro "Перенастройка и переустановка · $INSTALL_DIR" || ui_intro "Установка · $INSTALL_DIR" ;;
+    install) [[ $WAS_INSTALLED -eq 1 ]] && ui_intro "Перенастройка и переустановка · $INSTALL_DIR" || ui_intro "Установка · $INSTALL_DIR" ;;
     update) ui_intro "Обновление ${current_version:+$current_version → }${NEW_VERSION} · $INSTALL_DIR" ;;
     import) ui_intro "Перенос из архива $(basename "$IMPORT_FILE") · $INSTALL_DIR" ;;
     reconfigure) ui_intro "Изменение настроек · $INSTALL_DIR" ;;
@@ -921,10 +939,10 @@ main() {
 
   case $mode in
     install)
-      ACTION_DONE=$([[ -f $INSTALL_DIR/.env ]] && echo "перенастроен и запущен" || echo "установлен и запущен")
+      ACTION_DONE=$([[ $WAS_INSTALLED -eq 1 ]] && echo "перенастроен и запущен" || echo "установлен и запущен")
       ensure_docker
       ui_section "Настройка: $TOTAL_STEPS вопросов"
-      [[ -f $INSTALL_DIR/.env ]] || DEMO_PASSWORD_ASK=1   # новая база — спросим пароль демо-пользователей
+      [[ $WAS_INSTALLED -eq 1 ]] || DEMO_PASSWORD_ASK=1   # новая база — спросим пароль демо-пользователей
       step_admin; step_timezone; step_address; step_telegram; step_demo; step_confirm
       ui_section "Подготовка"
       backup_before_update

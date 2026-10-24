@@ -1,0 +1,29 @@
+---
+# Те же юниты, что ставит установщик: invoice-keeper backup --auto каждую ночь,
+# хранятся 7 ежедневных и 4 еженедельных копии (см. installer/invoice-keeper).
+- name: Служба резервного копирования
+  ansible.builtin.template:
+    src: backup.service.j2
+    dest: "/etc/systemd/system/{{ ik_project }}-backup.service"
+    mode: "0644"
+  register: ik_backup_service
+
+- name: Таймер резервного копирования
+  ansible.builtin.template:
+    src: backup.timer.j2
+    dest: "/etc/systemd/system/{{ ik_project }}-backup.timer"
+    mode: "0644"
+  register: ik_backup_timer
+
+- name: Таймер включён
+  ansible.builtin.systemd:
+    name: "{{ ik_project }}-backup.timer"
+    enabled: true
+    state: "{{ 'restarted' if (ik_backup_timer is changed or ik_backup_service is changed) else 'started' }}"
+    daemon_reload: "{{ ik_backup_timer is changed or ik_backup_service is changed }}"
+
+- name: Ротация журнала резервных копий
+  ansible.builtin.template:
+    src: logrotate.j2
+    dest: "/etc/logrotate.d/{{ ik_project }}"
+    mode: "0644"

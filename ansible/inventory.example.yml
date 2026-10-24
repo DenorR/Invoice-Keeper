@@ -1,0 +1,33 @@
+# Пример inventory. Скопируйте:  cp inventory.example.yml inventory.yml
+# Каждый сервер — отдельный независимый экземпляр Invoice Keeper (своя база и свой бот).
+# Все переменные роли с описанием: roles/invoice_keeper/defaults/main.yml
+invoice_keeper:
+  vars:
+    ansible_user: root
+    # общее для всех серверов
+    ik_timezone: Europe/Moscow
+    ik_admin_login: owner
+    ik_admin_password: "{{ vault_ik_admin_password }}"     # из group_vars/invoice_keeper/vault.yml
+
+  hosts:
+    # HTTPS на IP.sslip.io — домен подставится сам по IP сервера
+    ik-prod-1:
+      ansible_host: 203.0.113.10
+      ik_telegram_bot_token: "{{ vault_ik_prod_1_bot_token }}"
+      ik_telegram_chat_id: "-1001234567890"
+
+    # HTTPS на своём домене (A-запись должна указывать на сервер)
+    ik-prod-2:
+      ansible_host: 203.0.113.20
+      ik_domain: pay.example.ru
+      ik_telegram_bot_token: "{{ vault_ik_prod_2_bot_token }}"
+      ik_telegram_chat_id: "-1009876543210"
+
+    # стенд для показа: HTTP на порту 8081, демо-данные
+    ik-demo:
+      ansible_host: 203.0.113.30
+      ik_access_mode: http
+      ik_http_port: 8081
+      ik_seed_demo_data: true
+      ik_demo_user_password: "{{ vault_ik_demo_password }}"
+      ik_demo_accountant_password: "{{ vault_ik_demo_password }}"

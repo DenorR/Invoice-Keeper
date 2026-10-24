@@ -1,0 +1,11 @@
+# managed-by: ansible
+[Unit]
+Description=Invoice Keeper: резервная копия базы каждую ночь
+
+[Timer]
+OnCalendar=*-*-* {{ ik_backup_time }}:00
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

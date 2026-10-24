@@ -1,0 +1,44 @@
+---
+- name: Настройки .env (генерируются целиком из переменных роли)
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ ik_install_dir }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+  diff: false          # в .env пароли и токен — не показываем их даже с --diff
+  register: ik_env
+
+- name: Команда управления {{ ik_cli_link }}
+  ansible.builtin.file:
+    src: "{{ ik_install_dir }}/installer/invoice-keeper"
+    dest: "{{ ik_cli_link }}"
+    state: link
+    force: true
+
+- name: Образ приложения есть?
+  ansible.builtin.command: docker image inspect {{ ik_project }}:latest
+  check_mode: false
+  register: ik_image
+  changed_when: false
+  failed_when: false
+
+- name: Собрать образ приложения
+  ansible.builtin.command: docker compose build
+  args:
+    chdir: "{{ ik_install_dir }}"
+  when: ik_files is changed or ik_image.rc != 0
+
+- name: Запустить и дождаться готовности
+  community.docker.docker_compose_v2:
+    project_src: "{{ ik_install_dir }}"
+    project_name: "{{ ik_project }}"
+    files: "{{ ik_compose_files }}"
+    state: present
+    build: never
+    pull: missing
+    remove_orphans: true
+    # новые настройки или новая версия → контейнеры пересоздаются; иначе ничего не трогаем
+    recreate: "{{ 'always' if (ik_env is changed or ik_files is changed) else 'auto' }}"
+    wait: true
+    wait_timeout: 180
