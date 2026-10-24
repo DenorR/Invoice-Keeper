@@ -16,7 +16,7 @@ services:
     environment:
       DOMAIN: ${DOMAIN:?укажите DOMAIN в .env}
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy:/etc/caddy:ro   # каталог, а не файл: изменения после git pull видны внутри контейнера
       - caddy-data:/data
       - caddy-config:/config
 

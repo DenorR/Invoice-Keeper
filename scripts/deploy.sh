@@ -5,5 +5,6 @@ cd "$(dirname "$0")/.."
 
 git pull --ff-only
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --remove-orphans
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T caddy caddy reload --config /etc/caddy/Caddyfile
 docker image prune -f >/dev/null
 docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
