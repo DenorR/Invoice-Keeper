@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Invoice Keeper — мастер установки, обновления и перенастройки.
 #
-#   из .run-установщика:       setup.sh --source <распакованный архив> [--yes] [--reconfigure] [--no-ui]
+#   из .run-установщика:       setup.sh --source <распакованный архив> [--yes] [--reconfigure] [--plain]
 #   на настроенном сервере:    invoice-keeper config   (= setup.sh --reconfigure)
 #
 # Сценарии:
-#   установка     — настроек ещё нет: мастер → файлы → запуск
+#   установка     — настроек ещё нет: вопросы → файлы → запуск
 #   обновление    — настройки есть: резервная копия базы → новые файлы → перезапуск (.env не меняется)
-#   перенастройка — мастер с текущими значениями → новый .env → перезапуск
+#   перенастройка — вопросы с текущими значениями → новый .env → перезапуск
 set -Eeuo pipefail
 
 INSTALL_DIR="${INSTALL_DIR:-/opt/invoice-keeper}"
@@ -17,126 +17,240 @@ NEW_VERSION="${INSTALLER_VERSION:-}"
 SOURCE=""
 ASSUME_YES=0
 RECONFIGURE=0
-USE_UI=1
-TITLE="Invoice Keeper · установка"
+PLAIN=0
 
-# Кириллица в диалоговых окнах корректна только в UTF-8.
+# Кириллица и символы рамок корректны только в UTF-8.
 if locale -a 2>/dev/null | grep -qiE '^c\.utf-?8$'; then export LANG=C.UTF-8 LC_ALL=C.UTF-8; fi
 
-# ───────────────────────────── вывод ─────────────────────────────
-if [[ -t 1 ]] && command -v tput >/dev/null && [[ $(tput colors 2>/dev/null || echo 0) -ge 8 ]]; then
-  BOLD=$(tput bold); GREEN=$(tput setaf 2); YELLOW=$(tput setaf 3); RED=$(tput setaf 1); CYAN=$(tput setaf 6); RESET=$(tput sgr0)
-else
-  BOLD="" GREEN="" YELLOW="" RED="" CYAN="" RESET=""
-fi
-log()  { printf '[%s] %s\n' "$(date '+%F %T')" "$*" >>"$LOG_FILE"; }
-info() { printf '%s %s\n' "${CYAN}▸${RESET}" "$*"; log "INFO $*"; }
-ok()   { printf '%s %s\n' "${GREEN}✓${RESET}" "$*"; log "OK   $*"; }
-warn() { printf '%s %s\n' "${YELLOW}!${RESET}" "$*"; log "WARN $*"; }
+# ═════════════════════════════ оформление ═════════════════════════════
+setup_colors() {
+  RESET="" BOLD="" DIM="" GRAY="" CYAN="" GREEN="" YELLOW="" RED="" WHITE="" LOGO1="" LOGO2="" LOGO3="" LOGO4=""
+  [[ -t 1 ]] || return 0
+  local colors; colors=$(tput colors 2>/dev/null || echo 0)
+  (( colors >= 8 )) || return 0
+  RESET=$'\e[0m' BOLD=$'\e[1m' DIM=$'\e[2m' GRAY=$'\e[90m' CYAN=$'\e[36m' GREEN=$'\e[32m' YELLOW=$'\e[33m' RED=$'\e[31m' WHITE=$'\e[97m'
+  if (( colors >= 256 )); then LOGO1=$'\e[38;5;220m' LOGO2=$'\e[38;5;39m' LOGO3=$'\e[38;5;205m' LOGO4=$'\e[38;5;51m'
+  else LOGO1=$YELLOW LOGO2=$'\e[34m' LOGO3=$'\e[35m' LOGO4=$CYAN; fi
+}
+
+# Интерактивный режим: живой терминал, без --yes и --plain → курсор, стрелки, анимация.
+interactive() { [[ $ASSUME_YES -eq 0 && $PLAIN -eq 0 && -t 0 && -t 1 ]]; }
+animated() { [[ $PLAIN -eq 0 && -t 1 ]]; }
+
+log() { printf '[%s] %s\n' "$(date '+%F %T')" "$*" >>"$LOG_FILE"; }
+
+paint_logo() {  # закрашивает «лицо» букв белым, а тени — цветом буквы
+  local color=$1 text=$2
+  printf '%s' "${color}${text//█/${WHITE}█${color}}${RESET}"
+}
+
+banner() {
+  local -a A=("         " " ██████╗ " " ╚════██╗" " ███████║" "██╔═══██║" "╚███████║" " ╚══════╝")
+  local -a E=("   ██╔╝  " " ██████╗ " "██╔═══██╗" "████████║" "██╔═════╝" "╚███████╗" " ╚══════╝")
+  local -a Z=("         " "████████╗" "╚════██╔╝" "   ██╔═╝ " " ██╔═╝   " "████████╗" "╚═══════╝")
+  local i
+  echo
+  for i in 0 1 2 3 4 5 6; do
+    printf '   %s %s %s %s\n' "$(paint_logo "$LOGO1" "${A[i]}")" "$(paint_logo "$LOGO2" "${E[i]}")" \
+      "$(paint_logo "$LOGO3" "${Z[i]}")" "$(paint_logo "$LOGO4" "${A[i]}")"
+  done
+  cat <<EOF
+
+   ${BOLD}Invoice Keeper${RESET} ${DIM}— напоминания о регулярных платежах${RESET}   ${GRAY}v${NEW_VERSION:-$(cat "$INSTALL_DIR/VERSION" 2>/dev/null || echo ?)}${RESET}
+   ${DIM}Аренда, серверы, подписки: бот напомнит в Telegram за 3 дня до срока,${RESET}
+   ${DIM}а веб-панель покажет, что оплачено и что просрочено.${RESET}
+
+EOF
+}
+
+BAR_CHAR="│"
+bar()       { printf '%s\n' "${GRAY}${BAR_CHAR}${RESET}"; }
+ui_intro()  { printf '%s  %s\n' "${GRAY}┌${RESET}" "${BOLD}$1${RESET}"; bar; }
+ui_line()   { printf '%s  %s\n' "${GRAY}${BAR_CHAR}${RESET}" "$*"; }
+ui_dim()    { local line; while IFS= read -r line; do printf '%s  %s\n' "${GRAY}${BAR_CHAR}${RESET}" "${DIM}${line}${RESET}"; done <<<"$1"; }
+ui_section() { printf '%s  %s\n' "${GRAY}${BAR_CHAR}${RESET}" "${GRAY}── $1 ──${RESET}"; bar; }
+ui_done() {  # ui_done "что сделано" ["подробности"]
+  printf '%s  %s\n' "${GREEN}◇${RESET}" "$1"
+  [[ -n ${2:-} ]] && ui_dim "$2"
+  bar; log "OK   $1${2:+ — $2}"
+}
+ui_warn() { printf '%s  %s\n' "${YELLOW}▲${RESET}" "$1"; [[ -n ${2:-} ]] && ui_dim "$2"; bar; log "WARN $1 ${2:-}"; }
+ui_outro() { printf '%s  %s\n\n' "${GRAY}└${RESET}" "$1"; }
+
 die() {
-  printf '%s\n' "${RED}✗ $*${RESET}" >&2
-  printf '  Подробности в журнале: %s\n' "$LOG_FILE" >&2
-  log "FAIL $*"
+  animated && tput cnorm 2>/dev/null || true
+  printf '%s  %s\n' "${RED}▲${RESET}" "${RED}$1${RESET}" >&2
+  [[ -n ${2:-} ]] && printf '%s  %s\n' "${GRAY}${BAR_CHAR}${RESET}" "$2" >&2
+  printf '%s  %s\n\n' "${GRAY}└${RESET}" "Подробный журнал: $LOG_FILE" >&2
+  log "FAIL $1 ${2:-}"
   exit 1
 }
+cancelled() {
+  animated && tput cnorm 2>/dev/null || true
+  printf '\n%s  %s\n\n' "${GRAY}└${RESET}" "Прервано. Можно запустить установщик снова — повторный запуск безопасен."
+  exit 1
+}
+trap 'cancelled' INT
 
-# run "что делаем" команда… — вывод команды уходит в журнал, на экране — индикатор и итог.
-run() {
-  local title=$1; shift
-  log "RUN  $title: $*"
-  if [[ -t 1 ]]; then
-    ("$@") >>"$LOG_FILE" 2>&1 &
-    local pid=$! i=0 frames='|/-\'
-    while kill -0 "$pid" 2>/dev/null; do
-      printf '\r%s %s ' "${CYAN}${frames:i++%4:1}${RESET}" "$title"
-      sleep 0.2
-    done
-    if wait "$pid"; then printf '\r%s %s \n' "${GREEN}✓${RESET}" "$title"; log "OK   $title"
-    else printf '\r%s %s \n' "${RED}✗${RESET}" "$title"; die "Не удалось: $title"; fi
+erase_lines() { (( $1 > 0 )) && printf '\e[%dA\e[J' "$1"; return 0; }
+line_count() { local n=0 line; [[ -z $1 ]] && { echo 0; return; }; while IFS= read -r line; do n=$((n + 1)); done <<<"$1"; echo "$n"; }
+
+# ─── вопросы ───
+# Все функции кладут ответ в переменную по имени (не через $(…), чтобы рисовать на экране).
+
+ask_text() {  # ask_text ПЕРЕМЕННАЯ "вопрос" "по умолчанию" ["подсказка"]
+  local __var=$1 title=$2 default=${3:-} hint=${4:-} answer
+  if [[ $ASSUME_YES -eq 1 ]]; then answer=$default
+  elif interactive; then
+    printf '%s  %s\n' "${CYAN}◆${RESET}" "${BOLD}${title}${RESET}"
+    [[ -n $hint ]] && ui_dim "$hint"
+    read -r -e -i "$default" -p $'\001'"${CYAN}"$'\002'"${BAR_CHAR}"$'\001'"${RESET}"$'\002'"  " answer || cancelled
+    erase_lines $(( 2 + $(line_count "$hint") ))
   else
-    if ("$@") >>"$LOG_FILE" 2>&1; then ok "$title"; else die "Не удалось: $title"; fi
-  fi
-}
-
-# ───────────────────────────── диалоги ─────────────────────────────
-# Если есть whiptail и терминал — окна; иначе обычные вопросы в консоли; с --yes — значения по умолчанию.
-ui_available() { [[ $USE_UI -eq 1 && -t 0 && -t 1 ]] && command -v whiptail >/dev/null; }
-cancelled() { clear 2>/dev/null || true; echo "Установка отменена — на сервере ничего не изменено."; exit 1; }
-
-ui_msg() {  # просто сообщение
-  [[ $ASSUME_YES -eq 1 ]] && return 0
-  if ui_available; then whiptail --title "$TITLE" --msgbox "$1" 22 78; else printf '\n%s\n\n' "$1"; fi
-}
-
-ui_pause() {  # сообщение, после которого человек должен что-то сделать и подтвердить
-  if ui_available; then whiptail --title "$TITLE" --msgbox "$1" 18 78
-  else printf '\n%s\n' "$1"; read -r -p "Нажмите Enter, когда будете готовы… " _; fi
-}
-
-ui_yesno() {  # ui_yesno "вопрос" [yes|no — ответ по умолчанию]; код 0 = да
-  local question=$1 default=${2:-yes} answer
-  if [[ $ASSUME_YES -eq 1 ]]; then [[ $default == yes ]]; return; fi
-  if ui_available; then
-    if [[ $default == no ]]; then whiptail --title "$TITLE" --defaultno --yes-button "Да" --no-button "Нет" --yesno "$question" 16 78
-    else whiptail --title "$TITLE" --yes-button "Да" --no-button "Нет" --yesno "$question" 16 78; fi
-    return
-  fi
-  local hint="[Д/н]"; [[ $default == no ]] && hint="[д/Н]"
-  read -r -p "$question $hint " answer
-  answer=${answer,,}
-  if [[ -z $answer ]]; then [[ $default == yes ]]; return; fi
-  [[ $answer == д* || $answer == y* ]]
-}
-
-ui_input() {  # ui_input "вопрос" "по умолчанию" → ответ в stdout
-  local question=$1 default=${2:-} answer
-  if [[ $ASSUME_YES -eq 1 ]]; then printf '%s' "$default"; return; fi
-  if ui_available; then
-    answer=$(whiptail --title "$TITLE" --ok-button "Далее" --cancel-button "Отмена" --inputbox "$question" 14 78 "$default" 3>&1 1>&2 2>&3) || cancelled
-  else
-    read -r -p "$question [${default}]: " answer
+    printf '%s  %s\n' "◆" "$title"; [[ -n $hint ]] && ui_dim "$hint"
+    read -r -p "${BAR_CHAR}  [${default}]: " answer || answer=""
     answer=${answer:-$default}
   fi
-  printf '%s' "$answer"
+  ui_done "$title" "${answer:-—}"
+  printf -v "$__var" '%s' "$answer"
 }
 
-ui_password() {  # ui_password "вопрос" → ответ в stdout (ввод не показывается)
-  local question=$1 answer
-  if ui_available; then
-    answer=$(whiptail --title "$TITLE" --ok-button "Далее" --cancel-button "Отмена" --passwordbox "$question" 14 78 3>&1 1>&2 2>&3) || cancelled
+ask_secret() {  # ask_secret ПЕРЕМЕННАЯ "вопрос" ["подсказка"] — ввод скрыт точками
+  local __var=$1 title=$2 hint=${3:-} secret="" ch
+  if interactive; then
+    printf '%s  %s\n' "${CYAN}◆${RESET}" "${BOLD}${title}${RESET}"
+    [[ -n $hint ]] && ui_dim "$hint"
+    printf '%s  ' "${CYAN}${BAR_CHAR}${RESET}"
+    while IFS= read -rsn1 ch; do
+      case $ch in
+        "") break ;;
+        $'\x7f'|$'\b') if [[ -n $secret ]]; then secret=${secret%?}; printf '\b \b'; fi ;;
+        $'\e') read -rsn2 -t 0.05 _ || true ;;
+        *) secret+=$ch; printf '•' ;;
+      esac
+    done
+    echo
+    erase_lines $(( 2 + $(line_count "$hint") ))
   else
-    read -r -s -p "$question: " answer; echo >&2
+    printf '%s  %s\n' "◆" "$title"; [[ -n $hint ]] && ui_dim "$hint"
+    read -r -s -p "${BAR_CHAR}  " secret || secret=""; echo
   fi
-  printf '%s' "$answer"
+  ui_done "$title" "$([[ -n $secret ]] && echo '••••••••' || echo 'не введено')"
+  printf -v "$__var" '%s' "$secret"
 }
 
-ui_menu() {  # ui_menu "текст" "метка по умолчанию" метка1 "описание1" метка2 "описание2" … → метка в stdout
-  local text=$1 default=$2; shift 2
-  if [[ $ASSUME_YES -eq 1 ]]; then printf '%s' "$default"; return; fi
-  if ui_available; then
-    local count=$(( $# / 2 ))
-    whiptail --title "$TITLE" --ok-button "Выбрать" --cancel-button "Отмена" --default-item "$default" \
-      --menu "$text" $(( count + 13 )) 78 "$count" "$@" 3>&1 1>&2 2>&3 || cancelled
-    return
+ask_select() {  # ask_select ПЕРЕМЕННАЯ "вопрос" "метка по умолчанию" метка1 "вариант1" метка2 "вариант2" …
+  local __var=$1 title=$2 default=$3; shift 3
+  local -a tags=() labels=()
+  while (( $# )); do tags+=("$1"); labels+=("$2"); shift 2; done
+  local count=${#tags[@]} index=0 i key rest
+  for i in "${!tags[@]}"; do [[ ${tags[i]} == "$default" ]] && index=$i; done
+
+  if [[ $ASSUME_YES -eq 1 ]]; then :
+  elif interactive; then
+    tput civis 2>/dev/null || true
+    draw_select() {
+      printf '%s  %s\n' "${CYAN}◆${RESET}" "${BOLD}${title}${RESET}"
+      for i in "${!labels[@]}"; do
+        if (( i == index )); then printf '%s  %s %s\n' "${CYAN}${BAR_CHAR}${RESET}" "${CYAN}❯ ●${RESET}" "${labels[i]}"
+        else printf '%s    %s\n' "${CYAN}${BAR_CHAR}${RESET}" "${DIM}○ ${labels[i]}${RESET}"; fi
+      done
+      printf '%s  %s\n' "${CYAN}${BAR_CHAR}${RESET}" "${GRAY}↑↓ — выбор, Enter — подтвердить${RESET}"
+    }
+    draw_select
+    while IFS= read -rsn1 key; do
+      if [[ $key == $'\e' ]]; then read -rsn2 -t 0.05 rest || true; key+=$rest; fi
+      case $key in
+        $'\e[A'|k) index=$(( (index - 1 + count) % count )) ;;
+        $'\e[B'|j) index=$(( (index + 1) % count )) ;;
+        [1-9]) (( key <= count )) && index=$(( key - 1 )) ;;
+        "") break ;;
+        *) continue ;;
+      esac
+      erase_lines $(( count + 2 )); draw_select
+    done
+    erase_lines $(( count + 2 ))
+    tput cnorm 2>/dev/null || true
+  else
+    printf '%s  %s\n' "◆" "$title"
+    for i in "${!labels[@]}"; do printf '%s    %d) %s\n' "$BAR_CHAR" $(( i + 1 )) "${labels[i]}"; done
+    read -r -p "${BAR_CHAR}  Номер [$(( index + 1 ))]: " key || key=""
+    if [[ $key =~ ^[0-9]+$ ]] && (( key >= 1 && key <= count )); then index=$(( key - 1 )); fi
   fi
-  printf '\n%s\n' "$text" >&2
-  local tags=() number=1 default_number=1 answer
-  while (( $# )); do
-    tags+=("$1"); [[ $1 == "$default" ]] && default_number=$number
-    printf '  %d) %s\n' "$number" "$2" >&2
-    shift 2; number=$(( number + 1 ))
-  done
-  read -r -p "Ваш выбор [${default_number}]: " answer
-  answer=${answer:-$default_number}
-  if ! [[ $answer =~ ^[0-9]+$ ]] || (( answer < 1 || answer > ${#tags[@]} )); then answer=$default_number; fi
-  printf '%s' "${tags[answer-1]}"
+  ui_done "$title" "${labels[index]}"
+  printf -v "$__var" '%s' "${tags[index]}"
 }
 
-ui_info() {  # короткое сообщение без ожидания (пока идёт фоновое действие)
-  if ui_available; then whiptail --title "$TITLE" --infobox "$1" 10 78; else printf '%s\n' "$1"; fi
+ask_confirm() {  # ask_confirm "вопрос" [yes|no] → код 0, если «Да»
+  local title=$1 default=${2:-yes} choice key rest
+  choice=$([[ $default == yes ]] && echo 0 || echo 1)
+  if [[ $ASSUME_YES -eq 1 ]]; then :
+  elif interactive; then
+    tput civis 2>/dev/null || true
+    draw_confirm() {
+      local yes no
+      if (( choice == 0 )); then yes="${CYAN}● Да${RESET}"; no="${DIM}○ Нет${RESET}"
+      else yes="${DIM}○ Да${RESET}"; no="${CYAN}● Нет${RESET}"; fi
+      printf '%s  %s\n%s  %s  %s   %s\n' "${CYAN}◆${RESET}" "${BOLD}${title}${RESET}" "${CYAN}${BAR_CHAR}${RESET}" "$yes" "${GRAY}/${RESET}" "$no"
+    }
+    draw_confirm
+    while IFS= read -rsn1 key; do
+      if [[ $key == $'\e' ]]; then read -rsn2 -t 0.05 rest || true; key+=$rest; fi
+      case $key in
+        $'\e[D'|$'\e[C'|$'\t'|h|l) choice=$(( 1 - choice )) ;;
+        y|Y|д|Д) choice=0; break ;;
+        n|N|н|Н) choice=1; break ;;
+        "") break ;;
+        *) continue ;;
+      esac
+      erase_lines 2; draw_confirm
+    done
+    erase_lines 2
+    tput cnorm 2>/dev/null || true
+  else
+    local hint="[Д/н]"; [[ $default == no ]] && hint="[д/Н]"
+    read -r -p "◆  $title $hint " key || key=""
+    key=${key,,}
+    if [[ -n $key ]]; then [[ $key == д* || $key == y* ]] && choice=0 || choice=1; fi
+  fi
+  ui_done "$title" "$( (( choice == 0 )) && echo Да || echo Нет)"
+  return $choice
 }
 
-# ───────────────────────────── утилиты ─────────────────────────────
+# spin "что делаем" команда… — индикатор и время; вывод команды — в журнал.
+spin() {
+  local title=$1; shift
+  local started=$SECONDS status=0
+  log "RUN  $title: $*"
+  if animated; then
+    tput civis 2>/dev/null || true
+    ("$@") >>"$LOG_FILE" 2>&1 &
+    local pid=$! frames=(◒ ◐ ◓ ◑) i=0
+    while kill -0 "$pid" 2>/dev/null; do
+      printf '\r%s  %s %s\e[K' "${CYAN}${frames[i++ % 4]}${RESET}" "$title" "${GRAY}$(( SECONDS - started )) с${RESET}"
+      sleep 0.15
+    done
+    wait "$pid" || status=$?
+    printf '\r\e[K'
+    tput cnorm 2>/dev/null || true
+  else
+    ("$@") >>"$LOG_FILE" 2>&1 || status=$?
+  fi
+  if (( status != 0 )); then
+    if [[ ${SPIN_SOFT:-0} == 1 ]]; then
+      ui_warn "${SPIN_FAIL_TITLE:-Не удалось: $title}" "${SPIN_FAIL_NOTE:-Подробности в журнале: $LOG_FILE}"
+      return 1
+    fi
+    die "Не удалось: $title" "Причина — в последних строках журнала: tail -n 30 $LOG_FILE"
+  fi
+  local took=$(( SECONDS - started )) note=${SPIN_NOTE:-готово}
+  [[ -n ${SPIN_NOTE_FILE:-} && -s ${SPIN_NOTE_FILE:-} ]] && note=$(<"$SPIN_NOTE_FILE")
+  ui_done "$title" "$note$( (( took >= 2 )) && printf ' за %s' "$(human_time "$took")")"
+}
+
+human_time() { local s=$1; (( s >= 60 )) && printf '%d мин %d с' $(( s / 60 )) $(( s % 60 )) || printf '%d с' "$s"; }
+
+# ═════════════════════════════ утилиты ═════════════════════════════
 env_get() {  # env_get КЛЮЧ [файл]
   local file=${2:-$INSTALL_DIR/.env}
   [[ -f $file ]] || return 0
@@ -159,10 +273,7 @@ gen_password() {
   else head -c 200 /dev/urandom | tr -dc 'A-Za-z0-9' | cut -c1-"$length"; fi
 }
 
-detect_ip() {
-  ip -4 route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit } }'
-}
-
+detect_ip() { ip -4 route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit } }'; }
 is_private_ip() { [[ $1 =~ ^(10\.|127\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.) ]]; }
 
 host_timezone() {
@@ -172,25 +283,21 @@ host_timezone() {
   [[ -z $tz || $tz == UTC || $tz == Etc/UTC ]] && tz="Europe/Moscow"
   printf '%s' "$tz"
 }
-
 valid_timezone() { [[ ! -d /usr/share/zoneinfo || -f /usr/share/zoneinfo/$1 ]]; }
 
 has_global_ipv6() { ip -6 route get 2001:4860:4860::8888 >/dev/null 2>&1 && ip -6 addr show scope global 2>/dev/null | grep -q inet6; }
-
 docker_major() { docker version --format '{{.Server.Version}}' 2>/dev/null | cut -d. -f1; }
-
 compose() { (cd "$INSTALL_DIR" && docker compose "$@"); }
-
 project_running() { [[ -f $INSTALL_DIR/.env ]] && [[ -n $(compose ps -q app 2>/dev/null || true) ]]; }
 
-# ───────────────────────────── Telegram ─────────────────────────────
-# Нужен python3 (есть в Ubuntu и Debian по умолчанию) — только чтобы разобрать JSON-ответы.
-tg_api() {  # tg_api ТОКЕН МЕТОД [аргументы curl…] → тело ответа
+# ═════════════════════════════ Telegram ═════════════════════════════
+# python3 (есть в Ubuntu и Debian по умолчанию) нужен только для разбора JSON-ответов.
+tg_api() {
   local token=$1 method=$2; shift 2
   curl -sS --max-time 25 "https://api.telegram.org/bot${token}/${method}" "$@" 2>/dev/null || true
 }
 
-json() {  # json 'выражение над d' < JSON
+json() {
   python3 -c "import json, sys
 try:
     d = json.load(sys.stdin)
@@ -199,11 +306,9 @@ except Exception:
 $1" 2>/dev/null
 }
 
-tg_bot_name() {  # → @username или пусто
-  tg_api "$1" getMe | json 'print(d["result"]["username"] if d.get("ok") else "")'
-}
+tg_bot_name() { tg_api "$1" getMe | json 'print(d["result"]["username"] if d.get("ok") else "")'; }
 
-tg_find_chats() {  # → строки «id<TAB>название»; код 2 — бот занят другой программой
+tg_find_chats() {  # → строки «id<TAB>название»; код 2 — бота читает другая программа
   local body
   body=$(tg_api "$1" getUpdates -G --data-urlencode "timeout=2")
   if printf '%s' "$body" | json 'sys.exit(0 if d.get("error_code") == 409 else 1)'; then return 2; fi
@@ -220,114 +325,143 @@ for chat_id, title in chats.items():
     print(f"{chat_id}\t{title}")' || true
 }
 
-tg_send() {  # tg_send ТОКЕН ЧАТ ТЕКСТ → код 0 при успехе
-  tg_api "$1" sendMessage --data-urlencode "chat_id=$2" --data-urlencode "text=$3" | json 'sys.exit(0 if d.get("ok") else 1)'
+save_bot_name() { local name; name=$(tg_bot_name "$1"); [[ -n $name ]] || return 1; printf 'бот @%s' "$name" >"$2"; }
+
+tg_send() { tg_api "$1" sendMessage --data-urlencode "chat_id=$2" --data-urlencode "text=$3" | json 'sys.exit(0 if d.get("ok") else 1)'; }
+
+# Ждёт, пока в группу напишут сообщение. Результат — в CHATS; код 0 — найден, 1 — не дождались, 2 — бот занят.
+wait_for_chat() {
+  local token=$1 limit=120 result_file started=$SECONDS key code=1
+  result_file=$(mktemp)
+  (
+    while (( SECONDS - started < limit )); do
+      found=""; rc=0; found=$(tg_find_chats "$token") || rc=$?
+      if (( rc == 2 )); then exit 2; fi
+      if [[ -n $found ]]; then printf '%s\n' "$found" >"$result_file"; exit 0; fi
+      sleep 3
+    done
+    exit 1
+  ) &
+  local pid=$! frames=(◒ ◐ ◓ ◑) i=0
+  if interactive; then
+    tput civis 2>/dev/null || true
+    while kill -0 "$pid" 2>/dev/null; do
+      local elapsed=$(( SECONDS - started ))
+      printf '\r%s  %s %s\e[K' "${CYAN}${frames[i++ % 4]}${RESET}" "Жду сообщение в группе" \
+        "${GRAY}$(printf '%d:%02d' $(( elapsed / 60 )) $(( elapsed % 60 ))) из 2:00 · Enter — ввести ID вручную${RESET}"
+      if IFS= read -rsn1 -t 0.3 key; then [[ -z $key ]] && { kill "$pid" 2>/dev/null || true; break; }; fi
+    done
+    printf '\r\e[K'
+    tput cnorm 2>/dev/null || true
+  else
+    printf '%s  %s\n' "◒" "Жду сообщение в группе (до 2 минут)…"
+  fi
+  wait "$pid" 2>/dev/null && code=0 || code=$?
+  CHATS=$(cat "$result_file" 2>/dev/null || true); rm -f "$result_file"
+  [[ -n $CHATS ]] && return 0
+  (( code == 2 )) && return 2
+  return 1
 }
 
-# ───────────────────────────── шаги мастера ─────────────────────────────
+# ═════════════════════════════ шаги мастера ═════════════════════════════
+TOTAL_STEPS=5
+
 step_admin() {
-  ADMIN_LOGIN=$(ui_input "Шаг 1 из 5 · Администратор
-
-Логин администратора. Он задаётся только здесь (в файле .env)
-и не меняется через панель — так требует кейс." "${ADMIN_LOGIN:-admin}")
+  ask_text ADMIN_LOGIN "Шаг 1 из $TOTAL_STEPS · Логин администратора" "${ADMIN_LOGIN:-admin}" \
+    "Администратор задаётся только здесь и не меняется через панель — так требует кейс."
   ADMIN_LOGIN=${ADMIN_LOGIN,,}
-  [[ $ADMIN_LOGIN =~ ^[a-z0-9_.-]{3,64}$ ]] || ADMIN_LOGIN=admin
+  if ! [[ $ADMIN_LOGIN =~ ^[a-z0-9_.-]{3,64}$ ]]; then ui_warn "Логин заменён на admin" "Допустимы латиница, цифры, точка, дефис, подчёркивание (3–64 символа)."; ADMIN_LOGIN=admin; fi
 
-  local keep_label=() choice
-  [[ -n ${ADMIN_PASSWORD:-} ]] && keep_label=(keep "Оставить текущий пароль")
-  [[ $ASSUME_YES -eq 1 ]] && { [[ -n ${ADMIN_PASSWORD:-} ]] || { ADMIN_PASSWORD=$(gen_password 16); PASSWORD_SHOWN=1; }; return; }
-  choice=$(ui_menu "Пароль администратора" "$([[ -n ${ADMIN_PASSWORD:-} ]] && echo keep || echo generate)" \
-    "${keep_label[@]}" generate "Сгенерировать надёжный (покажу в конце установки)" manual "Ввести свой")
+  if [[ $ASSUME_YES -eq 1 ]]; then
+    [[ -n ${ADMIN_PASSWORD:-} ]] || ADMIN_PASSWORD=$(gen_password 16)
+    ui_done "Пароль администратора" "задан (посмотреть: invoice-keeper credentials)"; return
+  fi
+  local choice keep=()
+  [[ -n ${ADMIN_PASSWORD:-} ]] && keep=(keep "Оставить текущий")
+  ask_select choice "Пароль администратора" "$([[ -n ${ADMIN_PASSWORD:-} ]] && echo keep || echo manual)" \
+    "${keep[@]}" manual "Ввести свой" generate "Сгенерировать надёжный (посмотреть потом: invoice-keeper credentials)"
   case $choice in
     keep) ;;
-    generate) ADMIN_PASSWORD=$(gen_password 16); PASSWORD_SHOWN=1 ;;
+    generate) ADMIN_PASSWORD=$(gen_password 16) ;;
     manual)
       local first second
       while true; do
-        first=$(ui_password "Пароль администратора (не короче 8 символов)")
-        if (( ${#first} < 8 )); then ui_msg "Пароль слишком короткий — нужно хотя бы 8 символов."; continue; fi
-        second=$(ui_password "Повторите пароль")
+        ask_secret first "Новый пароль" "Не короче 8 символов. В конце установки он не показывается."
+        if (( ${#first} < 8 )); then ui_warn "Слишком короткий пароль" "Нужно хотя бы 8 символов — введите ещё раз."; continue; fi
+        ask_secret second "Повторите пароль"
         [[ $first == "$second" ]] && break
-        ui_msg "Пароли не совпали, попробуйте ещё раз."
+        ui_warn "Пароли не совпали" "Введите ещё раз."
       done
-      ADMIN_PASSWORD=$first; PASSWORD_SHOWN=1 ;;
+      ADMIN_PASSWORD=$first ;;
   esac
 }
 
 step_timezone() {
   local tz
   while true; do
-    tz=$(ui_input "Шаг 2 из 5 · Часовой пояс
-
-Все сроки и напоминания считаются в этом поясе.
-Формат IANA: Europe/Moscow, Asia/Yekaterinburg, Asia/Novosibirsk…" "${APP_TIMEZONE:-$(host_timezone)}")
+    ask_text tz "Шаг 2 из $TOTAL_STEPS · Часовой пояс" "${APP_TIMEZONE:-$(host_timezone)}" \
+      "В нём считаются сроки и напоминания. Например: Europe/Moscow, Asia/Yekaterinburg."
     if valid_timezone "$tz"; then APP_TIMEZONE=$tz; return; fi
     [[ $ASSUME_YES -eq 1 ]] && die "Неизвестный часовой пояс: $tz"
-    ui_msg "Часовой пояс «$tz» не найден. Проверьте написание, например Europe/Moscow."
+    ui_warn "Пояс «$tz» не найден" "Проверьте написание, например Europe/Moscow."
   done
 }
 
 step_address() {
   local ip; ip=$(detect_ip)
-  local default=https
-  [[ -n ${ACCESS_MODE:-} ]] && default=$ACCESS_MODE
+  local default=${ACCESS_MODE:-https}
   [[ -n ${DOMAIN:-} && ${DOMAIN:-} != *.sslip.io ]] && default=domain
   if [[ -z $ip ]] || is_private_ip "$ip"; then [[ $default == https ]] && default=http; fi
 
-  ACCESS_MODE=$(ui_menu "Шаг 3 из 5 · Как открывать панель
-
-IP этого сервера: ${ip:-не определён}" "$default" \
-    https "HTTPS по адресу ${ip:-IP}.sslip.io — бесплатно, сертификат сам" \
-    domain "HTTPS на своём домене (A-запись уже указывает сюда)" \
-    http "Без HTTPS: http://${ip:-IP} — только для проверки")
+  ask_select ACCESS_MODE "Шаг 3 из $TOTAL_STEPS · Адрес панели" "$default" \
+    https "HTTPS · https://${ip:-IP}.sslip.io — бесплатно, сертификат получу сам" \
+    domain "HTTPS · свой домен (A-запись уже указывает на этот сервер)" \
+    http "HTTP · http://${ip:-IP} — без шифрования, только для проверки"
 
   case $ACCESS_MODE in
     https)
-      [[ -n $ip ]] || die "Не удалось определить IP сервера — выберите свой домен или режим без HTTPS"
+      [[ -n $ip ]] || die "Не удалось определить IP сервера" "Выберите свой домен или режим без HTTPS."
       DOMAIN="${ip}.sslip.io"; PUBLIC_URL="https://$DOMAIN" ;;
     domain)
       while true; do
-        DOMAIN=$(ui_input "Домен панели (без https://), например pay.example.ru" "${DOMAIN:-}")
+        ask_text DOMAIN "Домен панели" "${DOMAIN:-}" "Без https://, например pay.example.ru"
         DOMAIN=${DOMAIN#https://}; DOMAIN=${DOMAIN#http://}; DOMAIN=${DOMAIN%%/*}
         [[ $DOMAIN =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] && break
         [[ $ASSUME_YES -eq 1 ]] && die "Некорректный домен: $DOMAIN"
-        ui_msg "«$DOMAIN» не похоже на домен. Пример: pay.example.ru"
+        ui_warn "«$DOMAIN» не похоже на домен" "Пример: pay.example.ru"
       done
       PUBLIC_URL="https://$DOMAIN" ;;
     http)
       DOMAIN=""
-      APP_PORT=$(ui_input "Порт панели на этом сервере" "${APP_PORT:-80}")
+      ask_text APP_PORT "Порт панели" "${APP_PORT:-80}"
       [[ $APP_PORT =~ ^[0-9]+$ ]] && (( APP_PORT > 0 && APP_PORT < 65536 )) || APP_PORT=80
       PUBLIC_URL="http://${ip:-localhost}"; [[ $APP_PORT != 80 ]] && PUBLIC_URL="$PUBLIC_URL:$APP_PORT" ;;
   esac
 }
 
 step_telegram() {
-  if [[ $ASSUME_YES -eq 1 ]]; then return; fi
-  if ! command -v python3 >/dev/null || ! command -v curl >/dev/null; then
-    TG_TOKEN=$(ui_input "Шаг 4 из 5 · Telegram
-
-Токен бота от @BotFather (пусто — без Telegram)" "${TG_TOKEN:-}")
-    TG_CHAT=$(ui_input "ID чата для напоминаний (бот пришлёт его по команде /chatid)" "${TG_CHAT:-}")
+  local title="Шаг 4 из $TOTAL_STEPS · Telegram-бот"
+  if [[ $ASSUME_YES -eq 1 ]]; then
+    ui_done "$title" "$([[ -n ${TG_TOKEN:-} ]] && echo "токен задан${TG_CHAT:+, чат $TG_CHAT}" || echo 'не подключён')"; return
+  fi
+  if ! command -v python3 >/dev/null; then
+    ask_text TG_TOKEN "$title" "${TG_TOKEN:-}" "Токен бота от @BotFather (пусто — без Telegram)"
+    ask_text TG_CHAT "ID чата для напоминаний" "${TG_CHAT:-}" "Бот пришлёт его в ответ на /chatid"
     return
   fi
 
-  local choice="setup"
+  local choice=setup
   if [[ -n ${TG_TOKEN:-} ]]; then
-    local current_bot; current_bot=$(tg_bot_name "$TG_TOKEN")
-    choice=$(ui_menu "Шаг 4 из 5 · Telegram
-
-Сейчас: бот ${current_bot:+@}${current_bot:-(не отвечает)}, чат ${TG_CHAT:-не выбран}" keep \
-      keep "Оставить как есть" setup "Настроить заново" off "Отключить напоминания в Telegram")
-  elif ! ui_yesno "Шаг 4 из 5 · Telegram
-
-Подключить бота, который за 3 дня до срока пишет в рабочий чат?
-
-Понадобится токен от @BotFather. Шаг можно пропустить
-и настроить позже командой:  invoice-keeper config" yes; then
-    choice=off
+    local current; current=$(tg_bot_name "$TG_TOKEN")
+    ask_select choice "$title" keep \
+      keep "Оставить как есть — бот ${current:+@}${current:-(не отвечает)}, чат ${TG_CHAT:-не выбран}" \
+      setup "Настроить заново" \
+      off "Отключить напоминания в Telegram"
+  else
+    ask_select choice "$title" setup \
+      setup "Подключить — бот будет писать в рабочий чат за 3 дня до срока" \
+      off "Пропустить — подключу позже командой invoice-keeper config"
   fi
-
   case $choice in
     keep) return ;;
     off) TG_TOKEN=""; TG_CHAT=""; return ;;
@@ -336,76 +470,52 @@ step_telegram() {
   # 1) токен
   local token bot
   while true; do
-    token=$(ui_password "Токен бота от @BotFather (вида 1234567890:AAH…)")
+    ask_secret token "Токен бота" "Создайте бота у @BotFather командой /newbot и вставьте токен (вид 1234567890:AAH…)."
     token=${token//[[:space:]]/}
     if [[ -z $token ]]; then
-      ui_yesno "Токен не введён. Пропустить настройку Telegram?" yes && { TG_TOKEN=""; TG_CHAT=""; return; }
+      if ask_confirm "Токен не введён. Пропустить Telegram?" yes; then TG_TOKEN=""; TG_CHAT=""; return; fi
       continue
     fi
-    ui_info "Проверяю токен…"
-    bot=$(tg_bot_name "$token")
-    [[ -n $bot ]] && break
-    ui_yesno "Telegram не принял токен (или сервер не может связаться с api.telegram.org).
-
-Ввести токен ещё раз?" yes || { TG_TOKEN=""; TG_CHAT=""; return; }
+    local check_file; check_file=$(mktemp)
+    if SPIN_SOFT=1 SPIN_NOTE_FILE="$check_file" SPIN_FAIL_TITLE="Telegram не принял токен"        SPIN_FAIL_NOTE="Проверьте токен (его выдаёт @BotFather) или связь сервера с api.telegram.org."        spin "Проверка токена" save_bot_name "$token" "$check_file"; then
+      bot=$(<"$check_file"); bot=${bot#бот @}; rm -f "$check_file"; break
+    fi
+    rm -f "$check_file"
+    ask_confirm "Ввести токен ещё раз?" yes || { TG_TOKEN=""; TG_CHAT=""; return; }
   done
   TG_TOKEN=$token; TG_BOT=$bot
 
-  # 2) чат: ищем автоматически по последним сообщениям боту
-  if project_running; then compose stop app >>"$LOG_FILE" 2>&1 || true; fi   # иначе наше приложение само читает бота
-  ui_pause "Бот найден: @$TG_BOT ✓
-
-Теперь выберите чат для напоминаний:
-  1. Добавьте @$TG_BOT в рабочую группу Telegram
-     (или откройте группу, где он уже есть);
-  2. Напишите в этой группе любое сообщение, например  /start
-
-Затем нажмите OK — я найду чат сам (жду до 2 минут)."
-
-  local chats="" status=0 waited=0
-  while (( waited < 120 )); do
-    ui_info "Ищу чат с ботом @$TG_BOT… прошло ${waited} с из 120.
-
-Напишите любое сообщение в группе, куда добавлен бот."
-    status=0; chats=$(tg_find_chats "$TG_TOKEN") || status=$?
-    [[ $status -eq 2 || -n $chats ]] && break
-    sleep 3; waited=$(( waited + 6 ))
-  done
-
-  if [[ $status -eq 2 ]]; then
-    ui_msg "Этот бот сейчас запущен в другом месте (например, на другом сервере),
-а Telegram не даёт двум программам одновременно читать одного бота.
-
-Введите ID чата вручную: бот пришлёт его в ответ на /chatid там, где он запущен.
-Или создайте для этого сервера отдельного бота у @BotFather."
-    TG_CHAT=$(ui_input "ID чата (например -1001234567890)" "${TG_CHAT:-}")
-  elif [[ -z $chats ]]; then
-    TG_CHAT=$(ui_input "Сообщений боту не нашлось. Так бывает, если этот бот уже запущен
-на другом сервере — тогда сообщения забирает он.
-
-Введите ID чата вручную (бот пришлёт его по команде /chatid)
-или оставьте пустым, чтобы настроить позже" "${TG_CHAT:-}")
-  else
-    local count; count=$(printf '%s\n' "$chats" | grep -c .)
+  # 2) чат — находим сами по сообщению в группе
+  if project_running; then compose stop app >>"$LOG_FILE" 2>&1 || true; fi   # иначе наше же приложение заберёт сообщение
+  printf '%s  %s\n' "${CYAN}◆${RESET}" "${BOLD}Выберите чат для напоминаний${RESET}"
+  ui_line "1. Добавьте ${BOLD}@$TG_BOT${RESET} в рабочую группу Telegram"
+  ui_line "2. Напишите в этой группе любое сообщение, например /start"
+  bar
+  local rc=0; wait_for_chat "$TG_TOKEN" || rc=$?
+  TG_CHAT="" TG_CHAT_TITLE=""
+  if (( rc == 0 )); then
+    local count; count=$(printf '%s\n' "$CHATS" | grep -c .)
     if (( count == 1 )); then
-      TG_CHAT=$(cut -f1 <<<"$chats"); TG_CHAT_TITLE=$(cut -f2 <<<"$chats")
+      TG_CHAT=$(cut -f1 <<<"$CHATS"); TG_CHAT_TITLE=$(cut -f2 <<<"$CHATS")
+      ui_done "Чат найден" "$TG_CHAT_TITLE · ID $TG_CHAT"
     else
-      local items=() line
-      while IFS=$'\t' read -r line_id line_title; do items+=("$line_id" "$line_title"); done <<<"$chats"
-      TG_CHAT=$(ui_menu "Бот видит несколько чатов. Куда присылать напоминания?" "${items[0]}" "${items[@]}")
-      TG_CHAT_TITLE=$(awk -F'\t' -v id="$TG_CHAT" '$1 == id { print $2 }' <<<"$chats")
+      local items=() chat_id chat_title
+      while IFS=$'\t' read -r chat_id chat_title; do items+=("$chat_id" "$chat_title"); done <<<"$CHATS"
+      ask_select TG_CHAT "Бот видит несколько чатов — куда присылать напоминания?" "${items[0]}" "${items[@]}"
+      TG_CHAT_TITLE=$(awk -F'\t' -v id="$TG_CHAT" '$1 == id { print $2 }' <<<"$CHATS")
     fi
+  else
+    (( rc == 2 )) && ui_warn "Бот сейчас запущен в другом месте" "Telegram не даёт двум программам читать одного бота."
+    (( rc == 1 )) && ui_warn "Сообщение не найдено" "Если бот уже работает на другом сервере, сообщения забирает он."
+    ask_text TG_CHAT "ID чата" "" "Бот пришлёт его в ответ на /chatid. Пусто — настроить позже."
   fi
 
   # 3) пробное сообщение
   if [[ -n $TG_CHAT ]]; then
     if tg_send "$TG_TOKEN" "$TG_CHAT" "✅ Invoice Keeper подключён к этому чату. Напоминания о платежах будут приходить сюда за 3 дня до срока."; then
-      ui_msg "Готово: чат ${TG_CHAT_TITLE:+«$TG_CHAT_TITLE» }($TG_CHAT).
-
-В него отправлено пробное сообщение — проверьте Telegram."
+      ui_done "Пробное сообщение отправлено" "Проверьте Telegram — оно уже в чате."
     else
-      ui_msg "Не удалось отправить пробное сообщение в чат $TG_CHAT.
-Проверьте, что бот добавлен в этот чат. Настройку можно поправить позже: invoice-keeper config"
+      ui_warn "Пробное сообщение не отправилось" "Проверьте, что бот добавлен в чат. Поправить: invoice-keeper config"
     fi
   fi
 }
@@ -413,76 +523,76 @@ step_telegram() {
 step_demo() {
   local default=yes
   [[ ${SEED_DEMO_DATA:-true} == false ]] && default=no
-  if ui_yesno "Шаг 5 из 5 · Демо-данные
-
-Загрузить пример: аренда в рублях, сервер в долларах, подписка в евро,
-просроченный платёж и история оплат? Удобно для показа и проверки.
-
-Демо загружается только в пустую базу; удалить его можно командой
-invoice-keeper reset-demo --empty" "$default"; then SEED_DEMO_DATA=true; else SEED_DEMO_DATA=false; fi
+  local choice
+  ask_select choice "Шаг 5 из $TOTAL_STEPS · Демо-данные" "$default" \
+    yes "Загрузить пример — аренда в RUB, сервер в USD, подписка в EUR, просрочка, история" \
+    no "Начать с пустой базы"
+  SEED_DEMO_DATA=$([[ $choice == yes ]] && echo true || echo false)
 }
 
 step_confirm() {
   local tg="не подключён"
-  [[ -n ${TG_TOKEN:-} ]] && tg="@${TG_BOT:-бот} → чат ${TG_CHAT:-не выбран}"
-  ui_yesno "Всё готово к запуску:
-
-  Папка:          $INSTALL_DIR
-  Панель:         $PUBLIC_URL
-  Администратор:  $ADMIN_LOGIN
-  Часовой пояс:   $APP_TIMEZONE
-  Telegram:       $tg
-  Демо-данные:    $([[ $SEED_DEMO_DATA == true ]] && echo да || echo нет)
-
-Продолжить?" yes || cancelled
+  [[ -n ${TG_TOKEN:-} ]] && tg="@${TG_BOT:-бот}${TG_CHAT:+ → ${TG_CHAT_TITLE:-чат $TG_CHAT}}"
+  printf '%s  %s\n' "${CYAN}◆${RESET}" "${BOLD}Проверьте настройки${RESET}"
+  ui_line "Панель          $PUBLIC_URL"
+  ui_line "Администратор   $ADMIN_LOGIN"
+  ui_line "Часовой пояс    $APP_TIMEZONE"
+  ui_line "Telegram        $tg"
+  ui_line "Демо-данные     $([[ $SEED_DEMO_DATA == true ]] && echo да || echo нет)"
+  ui_line "Папка           $INSTALL_DIR"
+  bar
+  ask_confirm "Всё верно, устанавливаем?" yes || cancelled
 }
 
-# ───────────────────────────── установка ─────────────────────────────
+# ═════════════════════════════ установка ═════════════════════════════
 preflight() {
-  [[ $EUID -eq 0 ]] || die "Нужны права администратора: sudo …"
-  [[ -f /etc/os-release ]] && . /etc/os-release
-  case "${ID:-}${ID_LIKE:-}" in
-    *ubuntu*|*debian*) ok "Система: ${PRETTY_NAME:-Linux}" ;;
-    *) warn "Система ${PRETTY_NAME:-неизвестна} не проверялась — нужен установленный Docker с Compose" ;;
-  esac
+  [[ $EUID -eq 0 ]] || die "Нужны права администратора" "Запустите через sudo."
   [[ $INSTALL_DIR == /* && ${#INSTALL_DIR} -gt 4 ]] || die "Странная папка установки: $INSTALL_DIR"
-  command -v curl >/dev/null || run "Установка curl" bash -c 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl'
+  local os="Linux"
+  [[ -f /etc/os-release ]] && os=$(. /etc/os-release; echo "${PRETTY_NAME:-Linux}")
+  local family=""
+  [[ -f /etc/os-release ]] && family=$(. /etc/os-release; echo "${ID:-} ${ID_LIKE:-}")
+  if ! [[ $family == *ubuntu* || $family == *debian* ]]; then
+    ui_warn "Система $os не проверялась" "Нужен установленный Docker с Compose."
+  fi
+  if ! command -v curl >/dev/null; then
+    spin "Установка curl" bash -c 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl'
+  fi
+  local ip; ip=$(detect_ip)
+  local memory; memory=$(free -m 2>/dev/null | awk '/^Mem:/ { printf "%.1f ГБ", $2 / 1024 }' | tr . ,)
+  ui_done "Проверка системы" "$os · IP ${ip:-не определён} · ядер: $(nproc 2>/dev/null || echo ?) · память: ${memory:-?}"
 }
 
 ensure_docker() {
   if command -v docker >/dev/null && docker compose version >/dev/null 2>&1; then
     systemctl is-active --quiet docker 2>/dev/null || systemctl start docker 2>/dev/null || true
-    ok "Docker $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo '') и Compose уже установлены"
+    ui_done "Docker" "уже установлен: Docker $(docker version --format '{{.Server.Version}}' 2>/dev/null), Compose $(docker compose version --short 2>/dev/null | cut -d+ -f1)"
     return
   fi
-  command -v apt-get >/dev/null || die "Docker не найден. Установите Docker Engine с Compose: https://docs.docker.com/engine/install/"
-  ui_yesno "Для работы нужен Docker, а он не установлен.
-
-Установить его сейчас из репозитория системы
-(пакеты docker.io и docker compose)?" yes || die "Без Docker установка невозможна"
-  run "Установка Docker (1–2 минуты)" bash -c '
+  command -v apt-get >/dev/null || die "Docker не найден" "Установите Docker Engine с Compose: https://docs.docker.com/engine/install/"
+  ask_confirm "Docker не установлен. Установить его сейчас (пакеты из репозитория системы)?" yes || die "Без Docker установка невозможна"
+  SPIN_NOTE="установлен" spin "Установка Docker" bash -c '
     export DEBIAN_FRONTEND=noninteractive
     apt-get update
     apt-get install -y docker.io
     apt-get install -y docker-compose-v2 || apt-get install -y docker-compose-plugin
     apt-get install -y docker-buildx || true
     systemctl enable --now docker'
-  docker compose version >/dev/null 2>&1 || die "Docker Compose не установился. Инструкция: https://docs.docker.com/engine/install/"
-  ok "Docker установлен"
+  docker compose version >/dev/null 2>&1 || die "Docker Compose не установился" "Инструкция: https://docs.docker.com/engine/install/"
 }
 
 needed_ports() { if [[ $ACCESS_MODE == http ]]; then echo "$APP_PORT"; else echo "80 443"; fi; }
 
 check_ports() {
-  local port holder
+  local port holder busy=()
   for port in $(needed_ports); do
     holder=$(ss -ltnpH "sport = :$port" 2>/dev/null | head -n 1 || true)
     [[ -z $holder ]] && continue
     if docker ps --filter "label=com.docker.compose.project=$PROJECT_NAME" --format '{{.Ports}}' 2>/dev/null | grep -qE "[:.]$port->"; then continue; fi
-    die "Порт $port уже занят другой программой:
-    $holder
-  Освободите его или выберите режим «без HTTPS» с другим портом (invoice-keeper config)."
+    busy+=("$port: $(grep -oE 'users:\(\("[^"]+' <<<"$holder" | cut -d'"' -f2)")
   done
+  (( ${#busy[@]} == 0 )) || die "Порт занят другой программой — ${busy[*]}" "Освободите его или выберите режим HTTP с другим портом: invoice-keeper config"
+  ui_done "Порты $(needed_ports | tr ' ' '/')" "свободны"
 }
 
 open_firewall() {
@@ -490,7 +600,7 @@ open_firewall() {
   ufw status 2>/dev/null | grep -q "Status: active" || return 0
   local port
   for port in 22 $(needed_ports); do ufw allow "$port/tcp" >>"$LOG_FILE" 2>&1 || true; done
-  ok "Брандмауэр ufw: открыты порты 22 $(needed_ports)"
+  ui_done "Брандмауэр ufw" "открыты порты 22 $(needed_ports)"
 }
 
 compose_files() {
@@ -528,10 +638,9 @@ write_env() {
   env_set DEMO_ACCOUNTANT_PASSWORD "${DEMO_ACCOUNTANT_PASSWORD:-$(gen_password 12)}" "$env_file"
   env_set COMPOSE_PROJECT_NAME "$PROJECT_NAME" "$env_file"
   env_set COMPOSE_FILE "$(compose_files)" "$env_file"
-  ok "Настройки записаны в $env_file"
 }
 
-load_env() {  # текущие значения — как подсказки для мастера (переменные окружения важнее)
+load_env() {  # текущие значения — как подсказки (переменные окружения важнее)
   ADMIN_LOGIN=${ADMIN_LOGIN:-$(env_get ADMIN_LOGIN)}
   ADMIN_PASSWORD=${ADMIN_PASSWORD:-$(env_get ADMIN_PASSWORD)}
   APP_TIMEZONE=${APP_TIMEZONE:-$(env_get APP_TIMEZONE)}
@@ -543,15 +652,14 @@ load_env() {  # текущие значения — как подсказки д
   DEMO_USER_PASSWORD=${DEMO_USER_PASSWORD:-$(env_get DEMO_USER_PASSWORD)}
   DEMO_ACCOUNTANT_PASSWORD=${DEMO_ACCOUNTANT_PASSWORD:-$(env_get DEMO_ACCOUNTANT_PASSWORD)}
   PUBLIC_URL=$(env_get PUBLIC_URL)
-  if [[ -z ${ACCESS_MODE:-} ]]; then
-    if [[ -n $DOMAIN ]]; then [[ $DOMAIN == *.sslip.io ]] && ACCESS_MODE=https || ACCESS_MODE=domain; fi
-  fi
+  if [[ -z ${ACCESS_MODE:-} && -n $DOMAIN ]]; then [[ $DOMAIN == *.sslip.io ]] && ACCESS_MODE=https || ACCESS_MODE=domain; fi
+  if [[ -z ${ACCESS_MODE:-} && ${PUBLIC_URL:-} == http://* ]]; then ACCESS_MODE=http; fi   # текущий режим без HTTPS
   [[ $ADMIN_PASSWORD == change-me ]] && ADMIN_PASSWORD=""
-  if [[ -n ${DOMAIN:-} && -z ${PUBLIC_URL:-} ]]; then PUBLIC_URL="https://$DOMAIN"; fi
+  [[ -n ${DOMAIN:-} && -z ${PUBLIC_URL:-} ]] && PUBLIC_URL="https://$DOMAIN"
   return 0
 }
 
-migrate_env() {  # обновление: добавить ключи, которых не было в прошлых версиях; остальное не трогаем
+migrate_env() {  # обновление: дописать ключи, которых не было в прошлых версиях
   local env_file="$INSTALL_DIR/.env"
   [[ -z ${ACCESS_MODE:-} ]] && { [[ -n ${DOMAIN:-} ]] && ACCESS_MODE=https || ACCESS_MODE=http; }
   [[ -n $(env_get COMPOSE_PROJECT_NAME) ]] || env_set COMPOSE_PROJECT_NAME "$PROJECT_NAME" "$env_file"
@@ -563,18 +671,19 @@ migrate_env() {  # обновление: добавить ключи, котор
   APP_PORT=${APP_PORT:-80}
 }
 
+backup_database() {  # backup_database ФАЙЛ — копия базы по текущей конфигурации
+  local file=$1
+  compose exec -T app python -c "import sqlite3; s = sqlite3.connect('/app/data/invoice-keeper.db'); d = sqlite3.connect('/app/data/.backup.db'); s.backup(d); d.close()"
+  compose cp app:/app/data/.backup.db "$file"
+  compose exec -T app rm -f /app/data/.backup.db
+  chmod 600 "$file"
+}
+
 backup_before_update() {
   project_running || return 0
   mkdir -p "$INSTALL_DIR/backups"
   local file="$INSTALL_DIR/backups/before-update-$(date +%Y%m%d-%H%M%S).db"
-  if compose exec -T app python -c "import sqlite3; s = sqlite3.connect('/app/data/invoice-keeper.db'); d = sqlite3.connect('/app/data/.backup.db'); s.backup(d); d.close()" >>"$LOG_FILE" 2>&1 \
-    && compose cp app:/app/data/.backup.db "$file" >>"$LOG_FILE" 2>&1; then
-    compose exec -T app rm -f /app/data/.backup.db >>"$LOG_FILE" 2>&1 || true
-    chmod 600 "$file"
-    ok "Резервная копия базы: $file"
-  else
-    warn "Резервную копию сделать не удалось (продолжаю обновление)"
-  fi
+  SPIN_SOFT=1 SPIN_NOTE="$file" SPIN_FAIL_NOTE="Продолжаю без копии. Подробности: $LOG_FILE"     spin "Резервная копия базы" backup_database "$file" || true
 }
 
 wait_healthy() {
@@ -587,10 +696,10 @@ wait_healthy() {
   return 1
 }
 
-wait_url() {
+check_url() {
   local i code
   for i in $(seq 1 30); do
-    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$1/api/v1/openapi.json" 2>/dev/null || true)
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$PUBLIC_URL/api/v1/openapi.json" 2>/dev/null || true)
     [[ $code == 200 ]] && return 0
     sleep 3
   done
@@ -598,110 +707,105 @@ wait_url() {
 }
 
 start_app() {
-  run "Сборка и запуск (первый раз — 1–3 минуты)" compose up -d --build --remove-orphans --force-recreate
-  run "Ожидание готовности приложения" wait_healthy
-  if wait_url "$PUBLIC_URL"; then ok "Панель отвечает: $PUBLIC_URL"
-  else warn "Приложение работает, но $PUBLIC_URL пока не открылся снаружи (сертификат или DNS могут появиться через минуту). Проверьте: invoice-keeper status"; fi
+  ui_section "Установка"
+  SPIN_NOTE="образ собран, контейнеры запущены" spin "Сборка и запуск" compose up -d --build --remove-orphans --force-recreate
+  SPIN_NOTE="приложение отвечает" spin "Проверка приложения" wait_healthy
+  if animated; then
+    local note="адрес открывается снаружи"; [[ $ACCESS_MODE != http ]] && note="HTTPS-сертификат получен, адрес открывается"
+    if check_url >>"$LOG_FILE" 2>&1; then ui_done "Проверка адреса $PUBLIC_URL" "$note"
+    else ui_warn "Адрес $PUBLIC_URL пока не открылся" "Сертификат или DNS могут появиться через минуту. Проверьте: invoice-keeper status"; fi
+  else
+    check_url && ui_done "Проверка адреса $PUBLIC_URL" "открывается" || ui_warn "Адрес $PUBLIC_URL пока не открылся" "Проверьте позже: invoice-keeper status"
+  fi
   docker image prune -f >>"$LOG_FILE" 2>&1 || true
 }
 
 summary() {
-  local tg="не подключён — настроить: invoice-keeper config"
-  local token chat; token=$(env_get TELEGRAM_BOT_TOKEN); chat=$(env_get TELEGRAM_CHAT_ID)
-  if [[ -n $token && -n $chat ]]; then tg="включены${TG_BOT:+ (@$TG_BOT)}, чат $chat"
-  elif [[ -n $token ]]; then tg="бот есть, чат не выбран — invoice-keeper config"; fi
-  local url; url=$(env_get PUBLIC_URL)
-  local password_line="пароль без изменений — показать: invoice-keeper credentials"
-  [[ ${PASSWORD_SHOWN:-0} -eq 1 ]] && password_line="пароль: ${BOLD}$(env_get ADMIN_PASSWORD)${RESET}   ← сохраните его"
-  local demo_line="демо-данные выключены"
-  [[ $(env_get SEED_DEMO_DATA) != false ]] && demo_line="user / $(env_get DEMO_USER_PASSWORD),  accountant / $(env_get DEMO_ACCOUNTANT_PASSWORD)"
-  local line="──────────────────────────────────────────────────────────────────────"
-  cat <<EOF
+  local url token chat tg
+  url=$(env_get PUBLIC_URL); token=$(env_get TELEGRAM_BOT_TOKEN); chat=$(env_get TELEGRAM_CHAT_ID)
+  if [[ -n $token && -n $chat ]]; then tg="включены${TG_BOT:+ · @$TG_BOT}${TG_CHAT_TITLE:+ → $TG_CHAT_TITLE}"
+  elif [[ -n $token ]]; then tg="бот подключён, чат не выбран — invoice-keeper config"
+  else tg="Telegram не подключён — invoice-keeper config"; fi
+  local users="демо-данные выключены"
+  [[ $(env_get SEED_DEMO_DATA) != false ]] && users="user, accountant (демо)"
 
-${GREEN}${line}${RESET}
- ${BOLD}Invoice Keeper $(cat "$INSTALL_DIR/VERSION" 2>/dev/null) — ${ACTION_DONE}${RESET}
-${GREEN}${line}${RESET}
-  Панель         ${BOLD}${url}${RESET}
-  Swagger        ${url}/api/v1/docs
-  Администратор  $(env_get ADMIN_LOGIN), ${password_line}
-  Пользователи   ${demo_line}
-  Напоминания    ${tg}
-
-  Управление     invoice-keeper status | logs | restart | backup | config | help
-  Настройки      $INSTALL_DIR/.env
-  Журнал         $LOG_FILE
-${GREEN}${line}${RESET}
-EOF
+  printf '%s  %s\n' "${GREEN}◆${RESET}" "${BOLD}${GREEN}Invoice Keeper $(cat "$INSTALL_DIR/VERSION" 2>/dev/null) — ${ACTION_DONE}${RESET}"
+  bar
+  ui_line "Панель          ${BOLD}${url}${RESET}"
+  ui_line "Swagger         ${url}/api/v1/docs"
+  ui_line "Администратор   $(env_get ADMIN_LOGIN)"
+  ui_line "Пользователи    $users"
+  ui_line "Пароли          ${CYAN}invoice-keeper credentials${RESET}"
+  ui_line "Напоминания     $tg"
+  bar
+  ui_line "Управление      invoice-keeper status · logs · backup · config · help"
+  ui_line "Настройки       $INSTALL_DIR/.env"
+  ui_line "Журнал          $LOG_FILE"
+  ui_outro "Готово! Откройте панель в браузере."
 }
 
-# ───────────────────────────── main ─────────────────────────────
+# ═════════════════════════════ main ═════════════════════════════
 main() {
   while (( $# )); do
     case $1 in
       --source) SOURCE=$2; shift ;;
       --yes|-y) ASSUME_YES=1 ;;
       --reconfigure) RECONFIGURE=1 ;;
-      --no-ui) USE_UI=0 ;;
-      *) die "Неизвестный параметр: $1 (справка: --help)" ;;
+      --plain|--no-ui) PLAIN=1 ;;
+      *) echo "Неизвестный параметр: $1 (справка: --help)" >&2; exit 1 ;;
     esac
     shift
   done
 
+  setup_colors
   mkdir -p "$(dirname "$LOG_FILE")"; touch "$LOG_FILE"; chmod 600 "$LOG_FILE"
   log "════ Invoice Keeper ${NEW_VERSION:-} · $(basename "$0") $* ════"
   PROJECT_NAME=$(basename "$INSTALL_DIR" | tr -cd 'a-z0-9_-'); PROJECT_NAME=${PROJECT_NAME:-invoice-keeper}
-  PASSWORD_SHOWN=0
 
   local mode current_version=""
   [[ -f $INSTALL_DIR/VERSION ]] && current_version=$(<"$INSTALL_DIR/VERSION")
   if [[ -n $SOURCE ]]; then
     [[ -f $INSTALL_DIR/.env && $RECONFIGURE -eq 0 ]] && mode=update || mode=install
   else
-    [[ -f $INSTALL_DIR/.env ]] || die "Invoice Keeper не установлен в $INSTALL_DIR — запустите .run-установщик"
+    [[ -f $INSTALL_DIR/.env ]] || { echo "Invoice Keeper не установлен в $INSTALL_DIR — запустите .run-установщик" >&2; exit 1; }
     mode=reconfigure
   fi
 
-  printf '\n%s\n\n' "${BOLD}Invoice Keeper ${NEW_VERSION:-$current_version}${RESET} · папка $INSTALL_DIR"
+  banner
+  case $mode in
+    install) [[ -f $INSTALL_DIR/.env ]] && ui_intro "Перенастройка и переустановка · $INSTALL_DIR" || ui_intro "Установка · $INSTALL_DIR" ;;
+    update) ui_intro "Обновление ${current_version:+$current_version → }${NEW_VERSION} · $INSTALL_DIR" ;;
+    reconfigure) ui_intro "Изменение настроек · $INSTALL_DIR" ;;
+  esac
+
   preflight
   load_env
 
   case $mode in
     install)
       ACTION_DONE=$([[ -f $INSTALL_DIR/.env ]] && echo "перенастроен и запущен" || echo "установлен и запущен")
-      [[ -f $INSTALL_DIR/.env ]] || PASSWORD_SHOWN=1   # при первой установке пароль показываем один раз
-      ui_msg "Добро пожаловать в установку Invoice Keeper ${NEW_VERSION}!
-
-Invoice Keeper напоминает о регулярных платежах (аренда, серверы,
-подписки) в Telegram за 3 дня до срока и показывает, что оплачено
-и что просрочено.
-
-Мастер задаст 5 вопросов, затем сам:
-  • поставит Docker, если его нет;
-  • запишет настройки в $INSTALL_DIR/.env;
-  • соберёт и запустит приложение, включит HTTPS;
-  • проверит, что всё работает."
       ensure_docker
+      ui_section "Настройка: $TOTAL_STEPS вопросов"
       step_admin; step_timezone; step_address; step_telegram; step_demo; step_confirm
+      ui_section "Подготовка"
       backup_before_update
-      run "Копирование файлов в $INSTALL_DIR" install_files
-      write_env ;;
+      SPIN_NOTE="$INSTALL_DIR" spin "Копирование файлов" install_files
+      write_env; ui_done "Настройки записаны" "$INSTALL_DIR/.env (доступ только у root)" ;;
     update)
       ACTION_DONE="обновлён"
-      ui_yesno "Invoice Keeper уже установлен в $INSTALL_DIR (версия ${current_version:-неизвестна}).
-
-Обновить до версии ${NEW_VERSION}? Настройки (.env) и данные сохранятся,
-перед обновлением будет сделана резервная копия базы.
-
-Чтобы заодно поменять настройки, запустите установщик с --reconfigure." yes || cancelled
+      ask_confirm "Обновить до ${NEW_VERSION}? Настройки и данные сохранятся, базу сначала скопирую" yes || cancelled
       ensure_docker
+      ui_section "Подготовка"
       backup_before_update      # по старой конфигурации — до замены файлов
-      run "Обновление файлов в $INSTALL_DIR" install_files
+      SPIN_NOTE="$INSTALL_DIR" spin "Обновление файлов" install_files
       migrate_env ;;
     reconfigure)
       ACTION_DONE="перенастроен"
       ensure_docker
+      ui_section "Настройка: $TOTAL_STEPS вопросов"
       step_admin; step_timezone; step_address; step_telegram; step_demo; step_confirm
-      write_env ;;
+      ui_section "Подготовка"
+      write_env; ui_done "Настройки записаны" "$INSTALL_DIR/.env (старые — в .env.bak-*)" ;;
   esac
 
   check_ports
