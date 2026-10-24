@@ -4,8 +4,8 @@
 
 | Файл | Что это |
 |---|---|
-| `invoice-keeper-1.2.0.run` | установщик: приложение и мастер настройки в одном файле |
-| `invoice-keeper-1.2.0.run.sha256` | контрольная сумма для проверки файла |
+| `invoice-keeper-1.2.1.run` | установщик: приложение и мастер настройки в одном файле |
+| `invoice-keeper-1.2.1.run.sha256` | контрольная сумма для проверки файла |
 | `README.md` | эта инструкция |
 
 Репозиторий, GitHub и сборка у себя не нужны: копируете один файл на сервер и запускаете.
@@ -28,19 +28,19 @@
 **Windows** (PowerShell или «Терминал»):
 
 ```powershell
-scp C:\путь\к\deploy-kit\invoice-keeper-1.2.0.run root@IP_СЕРВЕРА:
+scp C:\путь\к\deploy-kit\invoice-keeper-1.2.1.run root@IP_СЕРВЕРА:
 ```
 
 Например, если проект лежит в `D:\Hackathon`:
 
 ```powershell
-scp D:\Hackathon\deploy-kit\invoice-keeper-1.2.0.run root@IP_СЕРВЕРА:
+scp D:\Hackathon\deploy-kit\invoice-keeper-1.2.1.run root@IP_СЕРВЕРА:
 ```
 
 **macOS и Linux**:
 
 ```bash
-scp ~/путь/к/deploy-kit/invoice-keeper-1.2.0.run root@IP_СЕРВЕРА:
+scp ~/путь/к/deploy-kit/invoice-keeper-1.2.1.run root@IP_СЕРВЕРА:
 ```
 
 - `scp` спросит пароль от сервера (или возьмёт SSH-ключ).
@@ -53,7 +53,7 @@ scp ~/путь/к/deploy-kit/invoice-keeper-1.2.0.run root@IP_СЕРВЕРА:
 
 ```bash
 ssh root@IP_СЕРВЕРА
-bash invoice-keeper-1.2.0.run
+bash invoice-keeper-1.2.1.run
 ```
 
 Первая команда выполняется на вашем компьютере и открывает терминал сервера. Вторая выполняется уже на сервере.
@@ -63,11 +63,11 @@ bash invoice-keeper-1.2.0.run
 
 | Шаг | Вопрос | По умолчанию |
 |---|---|---|
-| 1 | Логин и пароль администратора (пароль вводится дважды и нигде не показывается) | `admin` |
+| 1 | Логин и пароль администратора: ввести свой или сгенерировать (сохранится в `.env`) | `admin`, ввести свой |
 | 2 | Часовой пояс для сроков и напоминаний | пояс сервера, иначе `Europe/Moscow` |
 | 3 | Как открывать панель: HTTPS на `IP.sslip.io`, HTTPS на своём домене или без HTTPS | HTTPS на `IP.sslip.io` |
 | 4 | Telegram: токен бота от @BotFather, затем мастер сам находит рабочий чат и присылает туда пробное сообщение | можно пропустить |
-| 5 | Загрузить ли демо-данные (аренда в рублях, сервер в долларах, подписка в евро) и пароль демо-пользователей `user` и `accountant` | да |
+| 5 | Загрузить ли демо-данные (аренда в рублях, сервер в долларах, подписка в евро) и пароль демо-пользователей `user` и `accountant`: ввести свой или сгенерировать | да |
 
 Дальше установщик сам:
 - поставит Docker, если его нет;
@@ -78,7 +78,13 @@ bash invoice-keeper-1.2.0.run
 - проверит, что панель отвечает.
 
 В конце он покажет таблицу: адрес панели, Swagger, администраторы, Telegram и основные команды.
-Пароли на экран не выводятся нигде — входите с теми, что задали в мастере.
+Пароли на экран не выводятся (их не увидят на демонстрации и в истории терминала). Если вы выбрали
+«Сгенерировать», пароль сохранён в `/opt/invoice-keeper/.env`, а в таблице будет команда, чтобы его посмотреть:
+
+```bash
+grep ^ADMIN_PASSWORD= /opt/invoice-keeper/.env    # пароль администратора
+grep ^DEMO_ /opt/invoice-keeper/.env              # пароль демо-пользователей user и accountant
+```
 
 **Как подключить Telegram на шаге 4:**
 1. Создайте бота у [@BotFather](https://t.me/BotFather) командой `/newbot` и вставьте токен в мастер.
@@ -147,7 +153,7 @@ bash invoice-keeper-<новая версия>.run
 ```bash
 ADMIN_PASSWORD='Надёжный-пароль-1' \
 TELEGRAM_BOT_TOKEN='1234567890:AAH…' TELEGRAM_CHAT_ID='-1001234567890' \
-bash invoice-keeper-1.2.0.run --yes
+bash invoice-keeper-1.2.1.run --yes
 ```
 
 | Переменная | Значение |
@@ -166,7 +172,7 @@ bash invoice-keeper-1.2.0.run --yes
 ## Параметры установщика
 
 ```text
-bash invoice-keeper-1.2.0.run [--yes] [--reconfigure] [--plain] [--extract ПАПКА] [--version] [--help]
+bash invoice-keeper-1.2.1.run [--yes] [--reconfigure] [--plain] [--extract ПАПКА] [--version] [--help]
 ```
 
 | Параметр | Что делает |
@@ -181,13 +187,13 @@ bash invoice-keeper-1.2.0.run [--yes] [--reconfigure] [--plain] [--extract ПА�
 macOS и Linux:
 
 ```bash
-sha256sum -c invoice-keeper-1.2.0.run.sha256
+sha256sum -c invoice-keeper-1.2.1.run.sha256
 ```
 
 Windows — сравните результат с числом из файла `.sha256`:
 
 ```powershell
-Get-FileHash .\invoice-keeper-1.2.0.run -Algorithm SHA256
+Get-FileHash .\invoice-keeper-1.2.1.run -Algorithm SHA256
 ```
 
 Установщик и сам проверяет контрольную сумму перед запуском на сервере, поэтому повреждённый файл не установится.

@@ -409,21 +409,24 @@ step_admin() {
   if ! [[ $ADMIN_LOGIN =~ ^[a-z0-9_.-]{3,64}$ ]]; then ui_warn "Логин заменён на admin" "Допустимы латиница, цифры, точка, дефис, подчёркивание (3–64 символа)."; ADMIN_LOGIN=admin; fi
 
   if [[ $ASSUME_YES -eq 1 ]]; then
-    [[ -n ${ADMIN_PASSWORD:-} ]] || ADMIN_PASSWORD=$(gen_password 16)
+    if [[ -z ${ADMIN_PASSWORD:-} ]]; then ADMIN_PASSWORD=$(gen_password 16); ADMIN_PASSWORD_GENERATED=1; fi
     ui_done "Пароль администратора" "задан (хранится в $INSTALL_DIR/.env)"; return
   fi
-  local choice=new
-  if [[ -n ${ADMIN_PASSWORD:-} ]]; then
-    ask_select choice "Пароль администратора" keep keep "Оставить текущий" new "Задать новый"
-  fi
-  [[ $choice == new ]] && ask_new_password ADMIN_PASSWORD "Пароль администратора"
+  local choice keep=()
+  [[ -n ${ADMIN_PASSWORD:-} ]] && keep=(keep "Оставить текущий")
+  ask_select choice "Пароль администратора" "$([[ -n ${ADMIN_PASSWORD:-} ]] && echo keep || echo manual)" \
+    "${keep[@]}" manual "Ввести свой" generate "Сгенерировать надёжный — сохраню в .env, на экран не выведу"
+  case $choice in
+    manual) ask_new_password ADMIN_PASSWORD "Пароль администратора" ;;
+    generate) ADMIN_PASSWORD=$(gen_password 16); ADMIN_PASSWORD_GENERATED=1 ;;
+  esac
   return 0
 }
 
 ask_new_password() {  # ask_new_password ПЕРЕМЕННАЯ "для кого" — ввод дважды, от 8 символов; на экран не выводится
   local __var=$1 title=$2 first second
   while true; do
-    ask_secret first "$title" "Не короче 8 символов. Пароль нигде не показывается — запомните его."
+    ask_secret first "$title" "Не короче 8 символов. На экран он не выводится — запомните его."
     if (( ${#first} < 8 )); then ui_warn "Слишком короткий пароль" "Нужно хотя бы 8 символов — введите ещё раз."; continue; fi
     ask_secret second "Повторите пароль"
     [[ $first == "$second" ]] && break
@@ -565,9 +568,16 @@ step_demo() {
     no "Начать с пустой базы"
   SEED_DEMO_DATA=$([[ $choice == yes ]] && echo true || echo false)
   # Демо-пользователи создаются один раз, при первой загрузке демо в пустую базу.
-  if [[ $SEED_DEMO_DATA == true && ${DEMO_PASSWORD_ASK:-0} == 1 && $ASSUME_YES -eq 0 ]]; then
-    local demo_password
-    ask_new_password demo_password "Пароль демо-пользователей user и accountant"
+  if [[ $SEED_DEMO_DATA == true && ${DEMO_PASSWORD_ASK:-0} == 1 ]]; then
+    local demo_choice=generate demo_password
+    if [[ $ASSUME_YES -eq 1 && -n ${DEMO_USER_PASSWORD:-} ]]; then return 0; fi
+    [[ $ASSUME_YES -eq 1 ]] || ask_select demo_choice "Пароль демо-пользователей user и accountant" manual \
+      manual "Ввести свой (один на обоих)" generate "Сгенерировать — сохраню в .env, на экран не выведу"
+    if [[ $demo_choice == manual ]]; then
+      ask_new_password demo_password "Пароль демо-пользователей"
+    else
+      demo_password=$(gen_password 12); DEMO_PASSWORD_GENERATED=1
+    fi
     DEMO_USER_PASSWORD=$demo_password DEMO_ACCOUNTANT_PASSWORD=$demo_password
   fi
   return 0
@@ -771,15 +781,23 @@ summary() {
 
   printf '%s  %s\n' "${GREEN}◆${RESET}" "${BOLD}${GREEN}Invoice Keeper $(cat "$INSTALL_DIR/VERSION" 2>/dev/null) — ${ACTION_DONE}${RESET}"
   bar
-  ui_table "Панель|${BOLD}${url}${RESET}" "Swagger|${url}/api/v1/docs" "Администраторы|$admins" "Пользователи|$users" \
-    "Напоминания|$tg" --- "Настройки|$INSTALL_DIR/.env" "Журнал установки|$LOG_FILE"
+  local rows=("Панель|${BOLD}${url}${RESET}" "Swagger|${url}/api/v1/docs" "Администраторы|$admins" "Пользователи|$users"
+              "Напоминания|$tg" ---)
+  [[ ${ADMIN_PASSWORD_GENERATED:-0} == 1 ]] && rows+=("Пароль админа|grep ^ADMIN_PASSWORD= $INSTALL_DIR/.env")
+  [[ ${DEMO_PASSWORD_GENERATED:-0} == 1 ]] && rows+=("Пароль демо|grep ^DEMO_ $INSTALL_DIR/.env")
+  rows+=("Настройки|$INSTALL_DIR/.env" "Журнал установки|$LOG_FILE")
+  ui_table "${rows[@]}"
   bar
   ui_line "${BOLD}Управление сервером${RESET}"
   ui_table "invoice-keeper status|состояние и проверка панели" "invoice-keeper logs|журнал приложения" \
     "invoice-keeper config|изменить настройки" "invoice-keeper admins|администраторы и как их добавить" \
     "invoice-keeper help|все команды"
   bar
-  ui_dim "Пароли на экран не выводятся: администратор входит с паролем, заданным в мастере."
+  if [[ ${ADMIN_PASSWORD_GENERATED:-0} == 1 || ${DEMO_PASSWORD_GENERATED:-0} == 1 ]]; then
+    ui_dim "Пароли на экран не выводятся. Сгенерированные — в .env (доступ только у root): команды в таблице."
+  else
+    ui_dim "Пароли на экран не выводятся: входите с теми, что задали в мастере."
+  fi
   ui_outro "Готово! Откройте панель в браузере."
 }
 

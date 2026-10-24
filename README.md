@@ -334,15 +334,15 @@ npm run build      # сборка в app/static
 
 ### Установщик одним файлом (рекомендуется)
 
-В папке [`deploy-kit/`](deploy-kit/) лежит `invoice-keeper-1.2.0.run`: приложение и мастер настройки в одном файле.
+В папке [`deploy-kit/`](deploy-kit/) лежит `invoice-keeper-1.2.1.run`: приложение и мастер настройки в одном файле.
 Подробная инструкция: [`deploy-kit/README.md`](deploy-kit/README.md).
 
 ```bash
-# на своём компьютере, из корня репозитория (в Windows путь — deploy-kit\invoice-keeper-1.2.0.run)
-scp deploy-kit/invoice-keeper-1.2.0.run root@IP_СЕРВЕРА:
+# на своём компьютере, из корня репозитория (в Windows путь — deploy-kit\invoice-keeper-1.2.1.run)
+scp deploy-kit/invoice-keeper-1.2.1.run root@IP_СЕРВЕРА:
 # подключиться к серверу и запустить установщик уже там
 ssh root@IP_СЕРВЕРА
-bash invoice-keeper-1.2.0.run
+bash invoice-keeper-1.2.1.run
 ```
 
 Мастер работает прямо в терминале (выбор стрелками, видно каждый шаг) и спросит пароль администратора, часовой пояс, адрес (HTTPS на `IP.sslip.io` или своём домене)
