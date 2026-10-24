@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app import __version__
 from app.api import API_PREFIX, build_api_router
 from app.config import BASE_DIR, Settings, load_settings
 from app.container import Container, build_container
@@ -165,7 +166,7 @@ def create_app(
 
     app = FastAPI(
         title="Invoice Keeper API",
-        version="1.0.0",
+        version=__version__,
         description=API_DESCRIPTION.strip(),
         docs_url=f"{API_PREFIX}/docs",
         openapi_url=f"{API_PREFIX}/openapi.json",

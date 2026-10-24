@@ -1,0 +1,5 @@
+# IPv6 в сети контейнеров. Нужен, если сервер выходит к Telegram только по IPv6
+# (на части VPS api.telegram.org по IPv4 недоступен). Требуется Docker 27+.
+networks:
+  default:
+    enable_ipv6: true

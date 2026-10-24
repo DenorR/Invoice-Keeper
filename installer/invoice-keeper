@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+# invoice-keeper — управление установленным Invoice Keeper (ставится установщиком в /usr/local/bin).
+set -Eeuo pipefail
+
+SELF=$(readlink -f "$0")
+INSTALL_DIR=$(dirname "$(dirname "$SELF")")
+ENV_FILE="$INSTALL_DIR/.env"
+
+if [[ -t 1 ]] && command -v tput >/dev/null; then BOLD=$(tput bold); GREEN=$(tput setaf 2); RED=$(tput setaf 1); RESET=$(tput sgr0)
+else BOLD="" GREEN="" RED="" RESET=""; fi
+
+die() { echo "${RED}✗ $*${RESET}" >&2; exit 1; }
+need_root() { [[ $EUID -eq 0 ]] || die "Нужны права администратора: sudo invoice-keeper $*"; }
+env_get() { grep -E "^$1=" "$ENV_FILE" 2>/dev/null | tail -n 1 | cut -d= -f2- || true; }
+env_set() {
+  if grep -qE "^$1=" "$ENV_FILE"; then
+    KEY="$1" VALUE="$2" awk -F= '$1 == ENVIRON["KEY"] { print ENVIRON["KEY"] "=" ENVIRON["VALUE"]; next } { print }'       "$ENV_FILE" >"$ENV_FILE.tmp" && cat "$ENV_FILE.tmp" >"$ENV_FILE" && rm -f "$ENV_FILE.tmp"
+  else printf '%s=%s
+' "$1" "$2" >>"$ENV_FILE"; fi
+}
+compose() { (cd "$INSTALL_DIR" && docker compose "$@"); }
+confirm() {
+  [[ ${YES:-0} == 1 ]] && return 0
+  local answer; read -r -p "$1 [д/Н] " answer; answer=${answer,,}
+  [[ $answer == д* || $answer == y* ]]
+}
+running() { [[ -n $(compose ps -q --status running app 2>/dev/null || true) ]]; }
+
+usage() {
+  cat <<EOF
+${BOLD}invoice-keeper${RESET} — управление Invoice Keeper $(cat "$INSTALL_DIR/VERSION" 2>/dev/null)  (папка $INSTALL_DIR)
+
+  status              состояние контейнеров и адрес панели
+  info                адрес, версия, Telegram (без паролей)
+  credentials         логины и пароли администратора и демо-пользователей
+  logs [app|caddy]    журнал в реальном времени (Ctrl+C — выход)
+  start | stop | restart
+  config              мастер настройки: пароль, адрес, Telegram, часовой пояс
+  backup              резервная копия базы в $INSTALL_DIR/backups
+  restore ФАЙЛ        восстановить базу из резервной копии
+  reset-demo [--empty] пересоздать базу с демо-данными (или пустую)
+  uninstall [--purge] удалить приложение (--purge — вместе с данными и настройками)
+  version             версия
+  help                эта справка
+
+Обновление: скопируйте на сервер новый invoice-keeper-X.Y.Z.run и запустите
+  sudo bash invoice-keeper-X.Y.Z.run
+EOF
+}
+
+cmd_status() {
+  compose ps
+  echo
+  local url; url=$(env_get PUBLIC_URL)
+  if running; then
+    local code; code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$url/api/v1/openapi.json" || true)
+    [[ $code == 200 ]] && echo "${GREEN}✓ Панель отвечает: $url${RESET}" || echo "${RED}! Приложение запущено, но $url не отвечает (код ${code:-нет ответа})${RESET}"
+  else
+    echo "${RED}! Приложение остановлено — запустить: invoice-keeper start${RESET}"
+  fi
+}
+
+cmd_info() {
+  local url token chat bot=""
+  url=$(env_get PUBLIC_URL); token=$(env_get TELEGRAM_BOT_TOKEN); chat=$(env_get TELEGRAM_CHAT_ID)
+  if [[ -n $token ]] && command -v python3 >/dev/null; then
+    bot=$(curl -s --max-time 10 "https://api.telegram.org/bot$token/getMe" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("@" + d["result"]["username"] if d.get("ok") else "")' 2>/dev/null || true)
+  fi
+  cat <<EOF
+Версия         $(cat "$INSTALL_DIR/VERSION" 2>/dev/null)
+Панель         $url
+Swagger        $url/api/v1/docs
+Часовой пояс   $(env_get APP_TIMEZONE)
+Telegram       ${token:+бот ${bot:-(не отвечает)}, }чат ${chat:-не выбран}
+Настройки      $ENV_FILE
+EOF
+}
+
+cmd_credentials() {
+  need_root credentials
+  echo "Администратор  $(env_get ADMIN_LOGIN) / $(env_get ADMIN_PASSWORD)"
+  if [[ $(env_get SEED_DEMO_DATA) != false ]]; then
+    echo "Пользователь   user / $(env_get DEMO_USER_PASSWORD)"
+    echo "Пользователь   accountant / $(env_get DEMO_ACCOUNTANT_PASSWORD)"
+    echo "(демо-пользователи создаются вместе с демо-данными)"
+  fi
+}
+
+cmd_backup() {
+  need_root backup
+  running || die "Приложение не запущено: invoice-keeper start"
+  mkdir -p "$INSTALL_DIR/backups"
+  local file="$INSTALL_DIR/backups/invoice-keeper-$(date +%Y%m%d-%H%M%S).db"
+  compose exec -T app python -c "import sqlite3; s = sqlite3.connect('/app/data/invoice-keeper.db'); d = sqlite3.connect('/app/data/.backup.db'); s.backup(d); d.close()"
+  compose cp app:/app/data/.backup.db "$file" >/dev/null 2>&1
+  compose exec -T app rm -f /app/data/.backup.db
+  chmod 600 "$file"
+  echo "${GREEN}✓ Резервная копия: $file${RESET}"
+}
+
+cmd_restore() {
+  need_root restore
+  local file=${1:-}
+  [[ -f $file ]] || die "Укажите файл резервной копии: invoice-keeper restore $INSTALL_DIR/backups/…db"
+  file=$(readlink -f "$file")
+  confirm "Текущая база будет заменена данными из $(basename "$file"). Продолжить?" || exit 1
+  running && cmd_backup
+  compose stop app
+  compose run --rm --no-deps -u root -v "$file:/restore.db:ro" --entrypoint sh app -c \
+    'cp /restore.db /app/data/invoice-keeper.db && rm -f /app/data/invoice-keeper.db-wal /app/data/invoice-keeper.db-shm && chown 1000:1000 /app/data/invoice-keeper.db'
+  compose up -d
+  echo "${GREEN}✓ База восстановлена из $(basename "$file")${RESET}"
+}
+
+cmd_reset_demo() {
+  need_root reset-demo
+  running || die "Приложение не запущено: invoice-keeper start"
+  local what="демо-данными"; [[ ${1:-} == --empty ]] && what="пустой базой"
+  confirm "Все платежи и пользователи будут удалены и заменены $what. Продолжить?" || exit 1
+  running && cmd_backup
+  # Демо загружается при старте в пустую базу — для пустой базы его надо выключить в настройках.
+  if [[ ${1:-} == --empty ]]; then env_set SEED_DEMO_DATA false; else env_set SEED_DEMO_DATA true; fi
+  compose exec -T app python -m app reset-db ${1:+"$1"}
+  compose up -d --force-recreate app >/dev/null 2>&1
+  echo "${GREEN}✓ База пересоздана ${1:+(пустая, демо-данные выключены)}${RESET}"
+}
+
+cmd_uninstall() {
+  need_root uninstall
+  local purge=0; [[ ${1:-} == --purge ]] && purge=1
+  if (( purge )); then
+    confirm "Удалить Invoice Keeper ВМЕСТЕ С ДАННЫМИ, резервными копиями и настройками?" || exit 1
+    compose down -v --remove-orphans
+    local link
+    for link in /usr/local/bin/*; do   # убираем только ссылки на эту установку
+      if [[ -L $link && $(readlink -f "$link") == "$SELF" ]]; then rm -f "$link"; fi
+    done
+    rm -rf "$INSTALL_DIR"
+    echo "${GREEN}✓ Invoice Keeper удалён полностью${RESET}"
+  else
+    confirm "Остановить и удалить контейнеры? Данные (Docker-том) и настройки останутся." || exit 1
+    compose down --remove-orphans
+    echo "${GREEN}✓ Контейнеры удалены. Данные и $ENV_FILE сохранены — повторная установка их подхватит.${RESET}"
+    echo "  Удалить всё полностью: invoice-keeper uninstall --purge"
+  fi
+}
+
+case "${1:-help}" in
+  status) cmd_status ;;
+  info) cmd_info ;;
+  credentials|passwords) cmd_credentials ;;
+  logs) compose logs -f --tail=100 "${2:-app}" ;;
+  start) need_root start; compose up -d; echo "${GREEN}✓ Запущено${RESET}" ;;
+  stop) need_root stop; compose stop; echo "${GREEN}✓ Остановлено${RESET}" ;;
+  restart) need_root restart; compose restart; echo "${GREEN}✓ Перезапущено${RESET}" ;;
+  config|configure) need_root config; INSTALL_DIR="$INSTALL_DIR" exec bash "$INSTALL_DIR/installer/setup.sh" --reconfigure "${@:2}" ;;
+  backup) cmd_backup ;;
+  restore) cmd_restore "${2:-}" ;;
+  reset-demo) cmd_reset_demo "${2:-}" ;;
+  uninstall) cmd_uninstall "${2:-}" ;;
+  version|--version) cat "$INSTALL_DIR/VERSION" 2>/dev/null ;;
+  help|-h|--help) usage ;;
+  *) echo "Неизвестная команда: $1"; echo; usage; exit 1 ;;
+esac

@@ -319,11 +319,34 @@ npm run build      # сборка в app/static
 
 ## Развёртывание на сервере (HTTPS)
 
+### Установщик одним файлом (рекомендуется)
+
+В папке [`deploy-kit/`](deploy-kit/) лежит `invoice-keeper-1.0.0.run`: приложение и мастер настройки в одном файле.
+Подробная инструкция: [`deploy-kit/README.md`](deploy-kit/README.md).
+
+```bash
+scp deploy-kit/invoice-keeper-1.0.0.run root@IP_СЕРВЕРА:
+ssh root@IP_СЕРВЕРА
+bash invoice-keeper-1.0.0.run
+```
+
+Мастер спросит пароль администратора, часовой пояс, адрес (HTTPS на `IP.sslip.io` или своём домене)
+и Telegram: проверит токен, сам найдёт рабочий чат и пришлёт пробное сообщение. Затем поставит Docker
+(если его нет), запустит приложение с HTTPS и проверит, что оно отвечает. После установки сервером
+управляет команда `invoice-keeper` (`status`, `logs`, `backup`, `config`, `help`…). Повторный запуск
+нового `.run` обновляет приложение, сохраняя настройки и данные.
+
+Собрать установщик из текущего кода: `scripts/build-installer.sh`; собрать, скопировать и запустить
+на сервере одной командой: `scripts/push-to-server.sh root@IP_СЕРВЕРА`.
+
+### Вручную через Docker Compose
+
 ```bash
 git clone <репозиторий> invoice-keeper && cd invoice-keeper
 cp .env.example .env    # ADMIN_PASSWORD, DEMO_*_PASSWORD, TELEGRAM_*, COOKIE_SECURE=true, DOMAIN=<IP>.sslip.io
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# если Telegram с сервера доступен только по IPv6 — добавьте -f docker-compose.ipv6.yml
 ```
 
 Caddy сам получает сертификат Let's Encrypt; приложение наружу не публикуется.
-Обновление: `scripts/deploy.sh`. Данные хранятся в Docker-томе `ik-data`.
+Данные хранятся в Docker-томе `ik-data`.

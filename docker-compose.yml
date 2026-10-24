@@ -2,7 +2,7 @@
 services:
   app:
     build: .
-    image: invoice-keeper:latest
+    image: ${COMPOSE_PROJECT_NAME:-invoice-keeper}:latest
     env_file: .env
     environment:
       HOST: 0.0.0.0

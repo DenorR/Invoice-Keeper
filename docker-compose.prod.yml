@@ -1,5 +1,7 @@
 # Сервер (VPS) с HTTPS:
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Если Telegram доступен с сервера только по IPv6 — добавьте -f docker-compose.ipv6.yml.
+# Установщик из deploy-kit/ делает всё это сам и записывает набор файлов в COMPOSE_FILE в .env.
 # В .env укажите DOMAIN (например 203.0.113.10.sslip.io) и COOKIE_SECURE=true.
 services:
   app:
@@ -19,12 +21,6 @@ services:
       - ./deploy:/etc/caddy:ro   # каталог, а не файл: изменения после git pull видны внутри контейнера
       - caddy-data:/data
       - caddy-config:/config
-
-# IPv6 для контейнеров: на части VPS Telegram API доступен только по IPv6
-# (так на нашем стенде — по IPv4 api.telegram.org заблокирован).
-networks:
-  default:
-    enable_ipv6: true
 
 volumes:
   caddy-data:
