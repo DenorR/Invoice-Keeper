@@ -1,29 +1,27 @@
 #!/usr/bin/env bash
 # invoice-keeper — управление установленным Invoice Keeper (ставится установщиком в /usr/local/bin).
 set -Eeuo pipefail
+if locale -a 2>/dev/null | grep -qiE '^c\.utf-?8$'; then export LANG=C.UTF-8 LC_ALL=C.UTF-8; fi
 
 SELF=$(readlink -f "$0")
 INSTALL_DIR=$(dirname "$(dirname "$SELF")")
 ENV_FILE="$INSTALL_DIR/.env"
+# shellcheck source=backup-lib.sh
+source "$INSTALL_DIR/installer/backup-lib.sh"
 
 if [[ -t 1 ]] && command -v tput >/dev/null && (( $(tput colors 2>/dev/null || echo 0) >= 8 )); then
-  BOLD=$'\e[1m' DIM=$'\e[2m' GREEN=$'\e[32m' RED=$'\e[31m' RESET=$'\e[0m' BRAND=$'\e[38;2;76;198;241m'
+  BOLD=$'\e[1m' DIM=$'\e[2m' GREEN=$'\e[32m' YELLOW=$'\e[33m' RED=$'\e[31m' RESET=$'\e[0m' BRAND=$'\e[38;2;76;198;241m'
 else
-  BOLD="" DIM="" GREEN="" RED="" RESET="" BRAND=""
+  BOLD="" DIM="" GREEN="" YELLOW="" RED="" RESET="" BRAND=""
 fi
 
-ok()  { echo "${GREEN}◇${RESET}  $*"; }
-die() { echo "${RED}▲  $*${RESET}" >&2; exit 1; }
+ok()   { echo "${GREEN}◇${RESET}  $*"; }
+warn() { echo "${YELLOW}▲${RESET}  $*"; }
+note() { echo "   ${DIM}$*${RESET}"; }
+die()  { echo "${RED}▲  $*${RESET}" >&2; exit 1; }
 need_root() { [[ $EUID -eq 0 ]] || die "Нужны права администратора: sudo invoice-keeper $*"; }
-env_get() { grep -E "^$1=" "$ENV_FILE" 2>/dev/null | tail -n 1 | cut -d= -f2- || true; }
-env_set() {
-  if grep -qE "^$1=" "$ENV_FILE"; then
-    KEY="$1" VALUE="$2" awk -F= '$1 == ENVIRON["KEY"] { print ENVIRON["KEY"] "=" ENVIRON["VALUE"]; next } { print }' \
-      "$ENV_FILE" >"$ENV_FILE.tmp" && cat "$ENV_FILE.tmp" >"$ENV_FILE" && rm -f "$ENV_FILE.tmp"
-  else
-    printf '%s=%s\n' "$1" "$2" >>"$ENV_FILE"
-  fi
-}
+env_get() { ik_env_get "$1" "$ENV_FILE"; }
+env_set() { ik_env_set "$1" "$2" "$ENV_FILE"; }
 compose() { (cd "$INSTALL_DIR" && docker compose "$@"); }
 confirm() {
   [[ ${YES:-0} == 1 ]] && return 0
@@ -31,12 +29,39 @@ confirm() {
   [[ $answer == д* || $answer == y* ]]
 }
 running() { [[ -n $(compose ps -q --status running app 2>/dev/null || true) ]]; }
+project() { local name; name=$(env_get COMPOSE_PROJECT_NAME); printf '%s' "${name:-invoice-keeper}"; }
+server_ip() { ip -4 route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit } }'; }
+human_size() { du -h "$1" 2>/dev/null | cut -f1; }
+pad() { local s=$1; printf '%s%*s' "$s" $(( $2 > ${#s} ? $2 - ${#s} : 0 )) ''; }  # pad ТЕКСТ ШИРИНА — в символах, не в байтах
+
+wait_ready() {
+  local i status
+  for i in $(seq 1 60); do
+    status=$(docker inspect -f '{{.State.Health.Status}}' "$(compose ps -q app 2>/dev/null)" 2>/dev/null || echo starting)
+    [[ $status == healthy ]] && return 0
+    sleep 2
+  done
+  return 1
+}
+
+read_passphrase() {  # read_passphrase ПЕРЕМЕННАЯ 1|0 — с подтверждением или без; IK_PASSPHRASE — без вопросов
+  if [[ -n ${IK_PASSPHRASE:-} ]]; then printf -v "$1" '%s' "$IK_PASSPHRASE"; return; fi
+  local first second
+  while true; do
+    read -rs -p "   Пароль архива: " first; echo
+    if (( ${#first} < 8 )); then warn "Нужно не меньше 8 символов"; continue; fi
+    [[ $2 == 1 ]] || break
+    read -rs -p "   Повторите пароль: " second; echo
+    [[ $first == "$second" ]] && break
+    warn "Пароли не совпали, попробуйте ещё раз"
+  done
+  printf -v "$1" '%s' "$first"
+}
 
 admin_logins() {  # основной администратор и логины из ADMINS — без паролей
-  local main extra item
-  main=$(env_get ADMIN_LOGIN); extra=$(env_get ADMINS)
-  printf '%s\n' "${main:-admin}"
-  IFS=',' read -ra items <<<"$extra"
+  local item items=()
+  printf '%s\n' "$(env_get ADMIN_LOGIN)"
+  IFS=',' read -ra items <<<"$(env_get ADMINS)"
   for item in "${items[@]}"; do item=${item%%:*}; item=${item// /}; [[ -n $item ]] && printf '%s\n' "${item,,}"; done
   return 0
 }
@@ -47,23 +72,26 @@ usage() {
   ${BOLD}invoice-keeper${RESET} ${DIM}— управление Invoice Keeper $(cat "$INSTALL_DIR/VERSION" 2>/dev/null) · $INSTALL_DIR${RESET}
 
   ${BRAND}Состояние${RESET}
-    status               контейнеры и проверка, что панель отвечает
-    info                 адрес, версия, администраторы, Telegram
-    logs [app|caddy]     журнал в реальном времени (Ctrl+C — выход)
+    status                  контейнеры и проверка, что панель отвечает
+    info                    адрес, версия, администраторы, Telegram
+    logs [app|caddy]        журнал в реальном времени (Ctrl+C — выход)
 
   ${BRAND}Работа${RESET}
-    start | stop         запустить / остановить
-    restart              перезапустить и применить изменения из .env
-    config               мастер настройки: пароль, адрес, Telegram, часовой пояс
-    admins               администраторы и как их добавить
+    start | stop            запустить / остановить
+    restart                 перезапустить и применить изменения из .env
+    config                  мастер настройки: пароль, адрес, Telegram, часовой пояс
+    admins                  администраторы и как их добавить
 
-  ${BRAND}Данные${RESET}
-    backup               резервная копия базы в $INSTALL_DIR/backups
-    restore ФАЙЛ         восстановить базу из резервной копии
-    reset-demo [--empty] пересоздать базу с демо-данными (или пустую)
+  ${BRAND}Резервные копии и перенос${RESET}
+    backup                  копия базы сейчас
+    backups                 список копий и расписание
+    restore ФАЙЛ | latest   восстановить базу из копии
+    export [ФАЙЛ]           зашифрованный архив для переноса: база + настройки
+    import ФАЙЛ             восстановить из архива (база + настройки)
+    reset-demo [--empty]    пересоздать базу с демо-данными (или пустую)
 
   ${BRAND}Прочее${RESET}
-    uninstall [--purge]  удалить приложение (--purge — вместе с данными и настройками)
+    uninstall [--purge]     удалить приложение (--purge — вместе с данными и настройками)
     version | help
 
   Обновление: скопируйте на сервер новый invoice-keeper-X.Y.Z.run и запустите: bash invoice-keeper-X.Y.Z.run
@@ -77,9 +105,9 @@ cmd_status() {
   local url; url=$(env_get PUBLIC_URL)
   if running; then
     local code; code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$url/api/v1/openapi.json" || true)
-    if [[ $code == 200 ]]; then ok "Панель отвечает: $url"; else echo "${RED}▲  Приложение запущено, но $url не отвечает (код ${code:-нет ответа})${RESET}"; fi
+    if [[ $code == 200 ]]; then ok "Панель отвечает: $url"; else warn "Приложение запущено, но $url не отвечает (код ${code:-нет ответа})"; fi
   else
-    echo "${RED}▲  Приложение остановлено — запустить: invoice-keeper start${RESET}"
+    warn "Приложение остановлено — запустить: invoice-keeper start"
   fi
 }
 
@@ -97,6 +125,7 @@ cmd_info() {
   Часовой пояс     $(env_get APP_TIMEZONE)
   Telegram         ${token:+бот ${bot:-(не отвечает)}, }чат ${chat:-не выбран}
   Настройки        $ENV_FILE
+  Резервные копии  $INSTALL_DIR/backups
 EOF
 }
 
@@ -123,33 +152,112 @@ EOF
 cmd_restart() {
   need_root restart
   compose up -d --force-recreate >/dev/null 2>&1
-  ok "Перезапущено, настройки из .env применены"
+  wait_ready && ok "Перезапущено, настройки из .env применены" || warn "Перезапущено, но приложение пока не отвечает — invoice-keeper logs"
 }
 
 cmd_backup() {
   need_root backup
+  if [[ ${1:-} == --auto ]]; then   # запуск по расписанию (systemd-таймер): ежедневная + по воскресеньям еженедельная
+    local log="/var/log/$(project)-backup.log" file
+    {
+      if ! running; then echo "$(date '+%F %T') пропуск: приложение остановлено"; exit 0; fi
+      if file=$(ik_backup daily); then
+        echo "$(date '+%F %T') ок: $file ($(human_size "$file"))"
+        if [[ $(date +%u) == 7 ]]; then cp -p "$file" "${file/daily-/weekly-}"; echo "$(date '+%F %T') ок: еженедельная копия"; fi
+      else
+        echo "$(date '+%F %T') ОШИБКА: копию сделать не удалось"; exit 1
+      fi
+      ik_prune daily 7; ik_prune weekly 4; ik_prune before-update 5; ik_prune before-restore 5; ik_prune before-import 5; ik_prune manual 20
+    } >>"$log" 2>&1
+    return
+  fi
   running || die "Приложение не запущено: invoice-keeper start"
-  mkdir -p "$INSTALL_DIR/backups"
-  local file="$INSTALL_DIR/backups/invoice-keeper-$(date +%Y%m%d-%H%M%S).db"
-  compose exec -T app python -c "import sqlite3; s = sqlite3.connect('/app/data/invoice-keeper.db'); d = sqlite3.connect('/app/data/.backup.db'); s.backup(d); d.close()"
-  compose cp app:/app/data/.backup.db "$file" >/dev/null 2>&1
-  compose exec -T app rm -f /app/data/.backup.db
-  chmod 600 "$file"
-  ok "Резервная копия: $file"
+  local file
+  file=$(ik_backup manual) || die "Не удалось сделать копию — invoice-keeper logs"
+  ik_prune manual 20
+  ok "Резервная копия: $file ($(human_size "$file")), целостность проверена"
+}
+
+cmd_backups() {
+  need_root backups
+  local dir file name kind stamp count=0
+  dir=$(ik_backup_dir)
+  echo
+  echo "  ${BOLD}Резервные копии${RESET} ${DIM}· $dir (доступ только у root)${RESET}"
+  echo
+  printf '  %s %s %s\n' "$(pad Дата 17)" "$(pad Тип 22)" "Размер"
+  while IFS= read -r file; do
+    name=$(basename "$file" .db.gz); kind=${name%-*-*}; stamp=${name: -15}
+    printf '  %s %s %s\n' "$(pad "${stamp:6:2}.${stamp:4:2}.${stamp:0:4} ${stamp:9:2}:${stamp:11:2}" 17)" \
+      "$(pad "$(ik_kind_label "$kind")" 22)" "$(human_size "$file")"
+    count=$((count + 1))
+  done < <(ls -1t "$dir"/*.db.gz 2>/dev/null)
+  (( count == 0 )) && echo "  (копий пока нет — сделать: invoice-keeper backup)"
+  echo
+  local next; next=$(systemctl list-timers "$(project)-backup.timer" --no-legend 2>/dev/null | awk '{ print $1, $2, $3 }')
+  echo "  Автоматически: каждую ночь около 03:00 по времени сервера; хранятся 7 ежедневных и 4 еженедельных."
+  [[ -n $next ]] && echo "  Следующая автоматическая копия: $next"
+  echo "  Восстановить: invoice-keeper restore ФАЙЛ   (последнюю: invoice-keeper restore latest)"
+  echo
 }
 
 cmd_restore() {
   need_root restore
   local file=${1:-}
-  [[ -f $file ]] || die "Укажите файл резервной копии: invoice-keeper restore $INSTALL_DIR/backups/…db"
+  [[ $file == latest ]] && file=$(ik_latest_backup)
+  [[ -n $file && -f $file ]] || { cmd_backups; die "Укажите файл копии: invoice-keeper restore $INSTALL_DIR/backups/…db.gz"; }
   file=$(readlink -f "$file")
-  confirm "Текущая база будет заменена данными из $(basename "$file"). Продолжить?" || exit 1
-  if running; then cmd_backup; fi
-  compose stop app
-  compose run --rm --no-deps -u root -v "$file:/restore.db:ro" --entrypoint sh app -c \
-    'cp /restore.db /app/data/invoice-keeper.db && rm -f /app/data/invoice-keeper.db-wal /app/data/invoice-keeper.db-shm && chown 1000:1000 /app/data/invoice-keeper.db'
-  compose up -d
+  confirm "Текущая база будет заменена копией $(basename "$file"). Продолжить?" || exit 1
+  if running; then
+    local saved; saved=$(ik_backup before-restore) && ok "Текущая база сохранена: $saved"
+  fi
+  compose stop app >/dev/null 2>&1
+  local rc=0; ik_restore_db "$file" || rc=$?
+  compose up -d >/dev/null 2>&1
+  (( rc == 2 )) && die "Файл повреждён или это не база Invoice Keeper — восстановление отменено, прежняя база на месте"
+  (( rc == 0 )) || die "Не удалось восстановить базу — прежняя база на месте"
+  wait_ready || true
   ok "База восстановлена из $(basename "$file")"
+}
+
+cmd_export() {
+  need_root export
+  running || die "Приложение не запущено: invoice-keeper start"
+  local out=${1:-/root/invoice-keeper-$(hostname -s)-$(date +%Y%m%d-%H%M).ikb} pass
+  echo "  Архив для переноса: база + настройки (.env: пароли, токен бота). Он будет зашифрован паролем."
+  echo "  ${DIM}Пароль архива нигде не сохраняется — запомните его, без него архив не открыть.${RESET}"
+  read_passphrase pass 1
+  ik_export "$out" "$pass" || die "Не удалось создать архив"
+  ok "Архив готов: $out ($(human_size "$out"), зашифрован AES-256)"
+  local run; run="invoice-keeper-$(cat "$INSTALL_DIR/VERSION").run"
+  note "1. На своём компьютере скачать архив:  scp root@$(server_ip):$out ."
+  note "2. Отправить на новый сервер:          scp $(basename "$out") $run root@НОВЫЙ_IP:"
+  note "3. На новом сервере:                   bash $run --import $(basename "$out")"
+}
+
+cmd_import() {
+  need_root import
+  local file=${1:-} pass rc work
+  [[ -f $file ]] || die "Укажите архив: invoice-keeper import ФАЙЛ.ikb"
+  work=$(mktemp -d); IK_TMP=$work; trap 'rm -rf "${IK_TMP:-}"' EXIT
+  for attempt in 1 2 3; do
+    read_passphrase pass 0
+    rc=0; ik_unpack "$file" "$pass" "$work" || rc=$?
+    (( rc == 0 )) && break
+    (( rc == 3 )) && { [[ -n ${IK_PASSPHRASE:-} ]] && die "Неверный пароль архива"; warn "Неверный пароль, попробуйте ещё раз"; continue; }
+    die "Архив повреждён или это не архив Invoice Keeper"
+  done
+  (( rc == 0 )) || die "Неверный пароль архива"
+  echo "  Архив: создан $(ik_env_get created "$work/manifest") на $(ik_env_get host "$work/manifest"), версия $(ik_env_get version "$work/manifest"), адрес был $(ik_env_get url "$work/manifest")"
+  confirm "Заменить текущую базу и настройки данными из архива? Адрес этого сервера сохранится." || exit 1
+  if running; then local saved; saved=$(ik_backup before-import) && ok "Текущая база сохранена: $saved"; fi
+  compose stop app >/dev/null 2>&1
+  ik_restore_db "$work/invoice-keeper.db" || { compose up -d >/dev/null 2>&1; die "Не удалось восстановить базу — прежняя база на месте"; }
+  ik_merge_env "$work/env"
+  compose up -d --force-recreate >/dev/null 2>&1
+  wait_ready || true
+  ok "Данные и настройки восстановлены из $(basename "$file") (старый .env — в .env.bak-*)"
+  warn "Если старый сервер ещё работает, остановите его (invoice-keeper stop): один Telegram-бот не может работать в двух местах."
 }
 
 cmd_reset_demo() {
@@ -157,12 +265,19 @@ cmd_reset_demo() {
   running || die "Приложение не запущено: invoice-keeper start"
   local what="демо-данными"; [[ ${1:-} == --empty ]] && what="пустой базой"
   confirm "Все платежи и пользователи будут удалены и заменены $what. Продолжить?" || exit 1
-  cmd_backup
+  local saved; saved=$(ik_backup before-restore) && ok "Текущая база сохранена: $saved"
   # Демо загружается при старте в пустую базу — для пустой базы его надо выключить в настройках.
   if [[ ${1:-} == --empty ]]; then env_set SEED_DEMO_DATA false; else env_set SEED_DEMO_DATA true; fi
-  compose exec -T app python -m app reset-db ${1:+"$1"}
+  compose exec -T app python -m app reset-db ${1:+"$1"} >/dev/null
   compose up -d --force-recreate app >/dev/null 2>&1
   ok "База пересоздана ${1:+(пустая, демо-данные выключены)}"
+}
+
+remove_system_units() {
+  local unit; unit="$(project)-backup"
+  systemctl disable --now "$unit.timer" >/dev/null 2>&1 || true
+  rm -f "/etc/systemd/system/$unit.timer" "/etc/systemd/system/$unit.service" "/etc/logrotate.d/$(project)" "/var/log/$(project)-backup.log"
+  systemctl daemon-reload >/dev/null 2>&1 || true
 }
 
 cmd_uninstall() {
@@ -171,6 +286,7 @@ cmd_uninstall() {
   if (( purge )); then
     confirm "Удалить Invoice Keeper ВМЕСТЕ С ДАННЫМИ, резервными копиями и настройками?" || exit 1
     compose down -v --remove-orphans
+    remove_system_units
     local link
     for link in /usr/local/bin/*; do   # убираем только ссылки на эту установку
       if [[ -L $link && $(readlink -f "$link") == "$SELF" ]]; then rm -f "$link"; fi
@@ -178,10 +294,10 @@ cmd_uninstall() {
     rm -rf "$INSTALL_DIR"
     ok "Invoice Keeper удалён полностью"
   else
-    confirm "Остановить и удалить контейнеры? Данные (Docker-том) и настройки останутся." || exit 1
+    confirm "Остановить и удалить контейнеры? Данные (Docker-том), копии и настройки останутся." || exit 1
     compose down --remove-orphans
     ok "Контейнеры удалены. Данные и $ENV_FILE сохранены — повторная установка их подхватит."
-    echo "   Удалить всё полностью: invoice-keeper uninstall --purge"
+    note "Удалить всё полностью: invoice-keeper uninstall --purge"
   fi
 }
 
@@ -194,8 +310,11 @@ case "${1:-help}" in
   stop) need_root stop; compose stop >/dev/null 2>&1; ok "Остановлено" ;;
   restart) cmd_restart ;;
   config|configure) need_root config; INSTALL_DIR="$INSTALL_DIR" exec bash "$INSTALL_DIR/installer/setup.sh" --reconfigure "${@:2}" ;;
-  backup) cmd_backup ;;
+  backup) cmd_backup "${2:-}" ;;
+  backups) cmd_backups ;;
   restore) cmd_restore "${2:-}" ;;
+  export) cmd_export "${2:-}" ;;
+  import) cmd_import "${2:-}" ;;
   reset-demo) cmd_reset_demo "${2:-}" ;;
   uninstall) cmd_uninstall "${2:-}" ;;
   version|--version) cat "$INSTALL_DIR/VERSION" 2>/dev/null ;;

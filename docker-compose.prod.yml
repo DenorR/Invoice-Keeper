@@ -10,6 +10,11 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     depends_on:
       - app
     ports:

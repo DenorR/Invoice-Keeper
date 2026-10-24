@@ -18,6 +18,10 @@ SOURCE=""
 ASSUME_YES=0
 RECONFIGURE=0
 PLAIN=0
+IMPORT_FILE=""
+IMPORT_DB=""
+# shellcheck source=backup-lib.sh
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/backup-lib.sh"
 
 # Кириллица и символы рамок корректны только в UTF-8.
 if locale -a 2>/dev/null | grep -qiE '^c\.utf-?8$'; then export LANG=C.UTF-8 LC_ALL=C.UTF-8; fi
@@ -586,9 +590,11 @@ step_demo() {
 step_confirm() {
   local tg="не подключён"
   [[ -n ${TG_TOKEN:-} ]] && tg="@${TG_BOT:-бот}${TG_CHAT:+ → ${TG_CHAT_TITLE:-чат $TG_CHAT}}"
+  local data="Демо-данные|$([[ $SEED_DEMO_DATA == true ]] && echo да || echo нет)"
+  [[ $mode == import ]] && data="Данные|из архива $(basename "$IMPORT_FILE")"
   printf '%s  %s\n' "${CYAN}◆${RESET}" "${BOLD}Проверьте настройки${RESET}"
   ui_table "Панель|$PUBLIC_URL" "Администратор|$ADMIN_LOGIN" "Часовой пояс|$APP_TIMEZONE" "Telegram|$tg" \
-    "Демо-данные|$([[ $SEED_DEMO_DATA == true ]] && echo да || echo нет)" "Папка|$INSTALL_DIR"
+    "$data" "Папка|$INSTALL_DIR"
   bar
   ask_confirm "Всё верно, устанавливаем?" yes || cancelled
 }
@@ -720,19 +726,79 @@ migrate_env() {  # обновление: дописать ключи, котор
   APP_PORT=${APP_PORT:-80}
 }
 
-backup_database() {  # backup_database ФАЙЛ — копия базы по текущей конфигурации
-  local file=$1
-  compose exec -T app python -c "import sqlite3; s = sqlite3.connect('/app/data/invoice-keeper.db'); d = sqlite3.connect('/app/data/.backup.db'); s.backup(d); d.close()"
-  compose cp app:/app/data/.backup.db "$file"
-  compose exec -T app rm -f /app/data/.backup.db
-  chmod 600 "$file"
+make_update_backup() {  # make_update_backup ФАЙЛ_ДЛЯ_ПОДПИСИ
+  local file
+  file=$(ik_backup before-update) || return 1
+  ik_prune before-update 5
+  printf '%s' "$file" >"$1"
 }
 
 backup_before_update() {
   project_running || return 0
-  mkdir -p "$INSTALL_DIR/backups"
-  local file="$INSTALL_DIR/backups/before-update-$(date +%Y%m%d-%H%M%S).db"
-  SPIN_SOFT=1 SPIN_NOTE="$file" SPIN_FAIL_NOTE="Продолжаю без копии. Подробности: $LOG_FILE"     spin "Резервная копия базы" backup_database "$file" || true
+  local note; note=$(mktemp)
+  SPIN_SOFT=1 SPIN_NOTE_FILE="$note" SPIN_FAIL_NOTE="Продолжаю без копии. Подробности: $LOG_FILE" \
+    spin "Резервная копия базы" make_update_backup "$note" || true
+  rm -f "$note"
+}
+
+install_system_units() {  # ночные резервные копии (таймер systemd) и ротация журналов
+  local unit="$PROJECT_NAME-backup"
+  cat >"/etc/systemd/system/$unit.service" <<EOF
+[Unit]
+Description=Invoice Keeper: резервная копия базы
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=$INSTALL_DIR/installer/invoice-keeper backup --auto
+EOF
+  cat >"/etc/systemd/system/$unit.timer" <<EOF
+[Unit]
+Description=Invoice Keeper: резервная копия базы каждую ночь
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+  systemctl daemon-reload && systemctl enable --now "$unit.timer" >>"$LOG_FILE" 2>&1
+  local logs="/var/log/$PROJECT_NAME-backup.log"
+  [[ $PROJECT_NAME == invoice-keeper ]] && logs="$LOG_FILE $logs"
+  cat >"/etc/logrotate.d/$PROJECT_NAME" <<EOF
+$logs {
+    monthly
+    rotate 6
+    compress
+    missingok
+    notifempty
+    create 600 root root
+}
+EOF
+  ui_done "Резервные копии по расписанию" "каждую ночь около 03:00 → $INSTALL_DIR/backups (7 ежедневных + 4 еженедельных)"
+}
+
+unpack_import() {  # расшифровать архив переноса во временную папку IMPORT_WORK
+  IMPORT_WORK=$(mktemp -d)
+  trap 'rm -rf "${IMPORT_WORK:-}"' EXIT
+  local pass rc=0 attempt
+  for attempt in 1 2 3; do
+    if [[ -n ${IK_PASSPHRASE:-} ]]; then pass=$IK_PASSPHRASE
+    elif [[ $ASSUME_YES -eq 1 ]]; then die "Для --import без вопросов передайте пароль архива: IK_PASSPHRASE=… bash … --import ФАЙЛ --yes"
+    else ask_secret pass "Пароль архива" "Тот, что вводили при invoice-keeper export на старом сервере."
+    fi
+    rc=0
+    SPIN_SOFT=1 SPIN_FAIL_TITLE="Архив не открылся" SPIN_FAIL_NOTE="Неверный пароль или архив повреждён." \
+      spin "Расшифровка архива" ik_unpack "$IMPORT_FILE" "$pass" "$IMPORT_WORK" || rc=1
+    (( rc == 0 )) && break
+    [[ -n ${IK_PASSPHRASE:-} ]] && die "Неверный пароль архива или архив повреждён"
+  done
+  (( rc == 0 )) || die "Архив не удалось открыть" "Проверьте пароль и что файл скопирован целиком."
+  local m="$IMPORT_WORK/manifest"
+  ui_done "Архив" "создан $(ik_env_get created "$m") на $(ik_env_get host "$m"), версия $(ik_env_get version "$m"), адрес был $(ik_env_get url "$m")"
 }
 
 wait_healthy() {
@@ -785,12 +851,13 @@ summary() {
               "Напоминания|$tg" ---)
   [[ ${ADMIN_PASSWORD_GENERATED:-0} == 1 ]] && rows+=("Пароль админа|grep ^ADMIN_PASSWORD= $INSTALL_DIR/.env")
   [[ ${DEMO_PASSWORD_GENERATED:-0} == 1 ]] && rows+=("Пароль демо|grep ^DEMO_ $INSTALL_DIR/.env")
-  rows+=("Настройки|$INSTALL_DIR/.env" "Журнал установки|$LOG_FILE")
+  rows+=("Резервные копии|каждую ночь → $INSTALL_DIR/backups" "Настройки|$INSTALL_DIR/.env" "Журнал установки|$LOG_FILE")
   ui_table "${rows[@]}"
   bar
   ui_line "${BOLD}Управление сервером${RESET}"
   ui_table "invoice-keeper status|состояние и проверка панели" "invoice-keeper logs|журнал приложения" \
     "invoice-keeper config|изменить настройки" "invoice-keeper admins|администраторы и как их добавить" \
+    "invoice-keeper backups|резервные копии и перенос" \
     "invoice-keeper help|все команды"
   bar
   if [[ ${ADMIN_PASSWORD_GENERATED:-0} == 1 || ${DEMO_PASSWORD_GENERATED:-0} == 1 ]]; then
@@ -809,6 +876,7 @@ main() {
       --yes|-y) ASSUME_YES=1 ;;
       --reconfigure) RECONFIGURE=1 ;;
       --plain|--no-ui) PLAIN=1 ;;
+      --import) IMPORT_FILE=$(readlink -f "${2:-}"); shift ;;
       *) echo "Неизвестный параметр: $1 (справка: --help)" >&2; exit 1 ;;
     esac
     shift
@@ -821,7 +889,14 @@ main() {
 
   local mode current_version=""
   [[ -f $INSTALL_DIR/VERSION ]] && current_version=$(<"$INSTALL_DIR/VERSION")
-  if [[ -n $SOURCE ]]; then
+  if [[ -n $IMPORT_FILE ]]; then
+    [[ -n $SOURCE ]] || { echo "--import работает только из .run-установщика" >&2; exit 1; }
+    [[ -f $IMPORT_FILE ]] || { echo "Архив не найден: $IMPORT_FILE" >&2; exit 1; }
+    if [[ -f $INSTALL_DIR/.env ]]; then
+      echo "Здесь уже установлен Invoice Keeper. Чтобы восстановить данные из архива: invoice-keeper import $IMPORT_FILE" >&2; exit 1
+    fi
+    mode=import
+  elif [[ -n $SOURCE ]]; then
     [[ -f $INSTALL_DIR/.env && $RECONFIGURE -eq 0 ]] && mode=update || mode=install
   else
     [[ -f $INSTALL_DIR/.env ]] || { echo "Invoice Keeper не установлен в $INSTALL_DIR — запустите .run-установщик" >&2; exit 1; }
@@ -832,6 +907,7 @@ main() {
   case $mode in
     install) [[ -f $INSTALL_DIR/.env ]] && ui_intro "Перенастройка и переустановка · $INSTALL_DIR" || ui_intro "Установка · $INSTALL_DIR" ;;
     update) ui_intro "Обновление ${current_version:+$current_version → }${NEW_VERSION} · $INSTALL_DIR" ;;
+    import) ui_intro "Перенос из архива $(basename "$IMPORT_FILE") · $INSTALL_DIR" ;;
     reconfigure) ui_intro "Изменение настроек · $INSTALL_DIR" ;;
   esac
 
@@ -857,6 +933,21 @@ main() {
       backup_before_update      # по старой конфигурации — до замены файлов
       SPIN_NOTE="$INSTALL_DIR" spin "Обновление файлов" install_files
       migrate_env ;;
+    import)
+      ACTION_DONE="перенесён из архива и запущен"
+      ensure_docker
+      ui_section "Перенос из архива"
+      unpack_import
+      mkdir -p "$INSTALL_DIR"
+      cp "$IMPORT_WORK/env" "$INSTALL_DIR/.env"; chmod 600 "$INSTALL_DIR/.env"
+      for key in "${IK_SERVER_KEYS[@]}"; do ik_env_set "$key" "" "$INSTALL_DIR/.env"; done   # адрес — заново, IP другой
+      load_env
+      ui_done "Настройки из архива" "администраторы $(admin_logins | paste -sd, - | sed 's/,/, /g'), часовой пояс $APP_TIMEZONE, Telegram $([[ -n $TG_TOKEN ]] && echo подключён || echo нет)"
+      step_address; step_confirm
+      ui_section "Подготовка"
+      SPIN_NOTE="$INSTALL_DIR" spin "Копирование файлов" install_files
+      write_env; ui_done "Настройки записаны" "$INSTALL_DIR/.env — из архива, адрес этого сервера"
+      IMPORT_DB="$IMPORT_WORK/invoice-keeper.db" ;;
     reconfigure)
       ACTION_DONE="перенастроен"
       ensure_docker
@@ -868,8 +959,14 @@ main() {
 
   check_ports
   open_firewall
+  install_system_units
+  if [[ -n $IMPORT_DB ]]; then
+    SPIN_NOTE="образ готов" spin "Сборка образа" compose build
+    SPIN_NOTE="платежи, история оплат, пользователи и журнал действий" spin "Перенос базы" ik_restore_db "$IMPORT_DB"
+  fi
   start_app
   summary
+  [[ $mode == import ]] && printf '%s  %s\n\n' "${YELLOW}▲${RESET}" "Если старый сервер ещё работает, остановите его (invoice-keeper stop): один Telegram-бот не может работать в двух местах."
   log "DONE $mode"
 }
 

@@ -334,15 +334,15 @@ npm run build      # сборка в app/static
 
 ### Установщик одним файлом (рекомендуется)
 
-В папке [`deploy-kit/`](deploy-kit/) лежит `invoice-keeper-1.2.2.run`: приложение и мастер настройки в одном файле.
+В папке [`deploy-kit/`](deploy-kit/) лежит `invoice-keeper-1.3.0.run`: приложение и мастер настройки в одном файле.
 Подробная инструкция: [`deploy-kit/README.md`](deploy-kit/README.md).
 
 ```bash
-# на своём компьютере, из корня репозитория (в Windows путь — deploy-kit\invoice-keeper-1.2.2.run)
-scp deploy-kit/invoice-keeper-1.2.2.run root@IP_СЕРВЕРА:
+# на своём компьютере, из корня репозитория (в Windows путь — deploy-kit\invoice-keeper-1.3.0.run)
+scp deploy-kit/invoice-keeper-1.3.0.run root@IP_СЕРВЕРА:
 # подключиться к серверу и запустить установщик уже там
 ssh root@IP_СЕРВЕРА
-bash invoice-keeper-1.2.2.run
+bash invoice-keeper-1.3.0.run
 ```
 
 Мастер работает прямо в терминале (выбор стрелками, видно каждый шаг) и спросит пароль администратора, часовой пояс, адрес (HTTPS на `IP.sslip.io` или своём домене)
@@ -350,6 +350,11 @@ bash invoice-keeper-1.2.2.run
 (если его нет), запустит приложение с HTTPS и проверит, что оно отвечает. После установки сервером
 управляет команда `invoice-keeper` (`status`, `logs`, `backup`, `config`, `help`…). Повторный запуск
 нового `.run` обновляет приложение, сохраняя настройки и данные.
+
+Резервные копии базы делаются каждую ночь (systemd-таймер, хранятся 7 ежедневных и 4 еженедельных,
+каждая проверяется на целостность). Для переноса на другой сервер `invoice-keeper export` создаёт
+зашифрованный архив (база + `.env`, AES-256), а `bash invoice-keeper-1.3.0.run --import архив.ikb`
+разворачивает его на новом сервере. Подробно — в [`deploy-kit/README.md`](deploy-kit/README.md).
 
 Собрать установщик из текущего кода: `scripts/build-installer.sh`; собрать, скопировать и запустить
 на сервере одной командой: `scripts/push-to-server.sh root@IP_СЕРВЕРА`.

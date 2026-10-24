@@ -12,6 +12,11 @@ services:
     volumes:
       - ik-data:/app/data   # SQLite-база переживает перезапуск и пересборку
     restart: unless-stopped
+    logging:              # журнал контейнера не растёт бесконечно: 5 файлов по 10 МБ
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
 volumes:
   ik-data:
