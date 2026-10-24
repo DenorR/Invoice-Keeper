@@ -69,7 +69,6 @@ python -m app
 | Роль | Логин | Пароль |
 |---|---|---|
 | Администратор | `ADMIN_LOGIN` из `.env` (по умолчанию `admin`) | `ADMIN_PASSWORD` из `.env` (в примере — `change-me`) |
-| Ещё администраторы | из строки `ADMINS` в `.env`: `ADMINS=anna:Пароль-1,oleg:Пароль-2` | там же |
 | Пользователь | `user` | `user12345` |
 | Пользователь | `accountant` | `accountant123` |
 
@@ -259,8 +258,7 @@ curl -s localhost:8080/api/v1/payment-occurrences?status=unpaid -H "Authorizatio
 
 | Переменная | По умолчанию | Описание |
 |---|---|---|
-| `ADMIN_LOGIN` / `ADMIN_PASSWORD` | `admin` / — | Основной администратор (обязательно задать пароль) |
-| `ADMINS` | — | Дополнительные администраторы: `логин:пароль` через запятую |
+| `ADMIN_LOGIN` / `ADMIN_PASSWORD` | `admin` / — | Единственный администратор (обязательно задать пароль) |
 | `APP_TIMEZONE` | `Europe/Moscow` | Единый часовой пояс для всех дат |
 | `DATABASE_URL` | `sqlite:///./data/invoice-keeper.db` | База данных (SQLAlchemy URL) |
 | `TELEGRAM_BOT_TOKEN` | — | Токен бота |
@@ -334,15 +332,15 @@ npm run build      # сборка в app/static
 
 ### Установщик одним файлом (рекомендуется)
 
-В папке [`deploy-kit/`](deploy-kit/) лежит `invoice-keeper-1.3.0.run`: приложение и мастер настройки в одном файле.
+В папке [`deploy-kit/`](deploy-kit/) лежит `invoice-keeper-1.4.0.run`: приложение и мастер настройки в одном файле.
 Подробная инструкция: [`deploy-kit/README.md`](deploy-kit/README.md).
 
 ```bash
-# на своём компьютере, из корня репозитория (в Windows путь — deploy-kit\invoice-keeper-1.3.0.run)
-scp deploy-kit/invoice-keeper-1.3.0.run root@IP_СЕРВЕРА:
+# на своём компьютере, из корня репозитория (в Windows путь — deploy-kit\invoice-keeper-1.4.0.run)
+scp deploy-kit/invoice-keeper-1.4.0.run root@IP_СЕРВЕРА:
 # подключиться к серверу и запустить установщик уже там
 ssh root@IP_СЕРВЕРА
-bash invoice-keeper-1.3.0.run
+bash invoice-keeper-1.4.0.run
 ```
 
 Мастер работает прямо в терминале (выбор стрелками, видно каждый шаг) и спросит пароль администратора, часовой пояс, адрес (HTTPS на `IP.sslip.io` или своём домене)
@@ -353,7 +351,7 @@ bash invoice-keeper-1.3.0.run
 
 Резервные копии базы делаются каждую ночь (systemd-таймер, хранятся 7 ежедневных и 4 еженедельных,
 каждая проверяется на целостность). Для переноса на другой сервер `invoice-keeper export` создаёт
-зашифрованный архив (база + `.env`, AES-256), а `bash invoice-keeper-1.3.0.run --import архив.ikb`
+зашифрованный архив (база + `.env`, AES-256), а `bash invoice-keeper-1.4.0.run --import архив.ikb`
 разворачивает его на новом сервере. Подробно — в [`deploy-kit/README.md`](deploy-kit/README.md).
 
 Собрать установщик из текущего кода: `scripts/build-installer.sh`; собрать, скопировать и запустить

@@ -21,6 +21,11 @@ ik_env_set() {  # ik_env_set КЛЮЧ ЗНАЧЕНИЕ ФАЙЛ
   fi
 }
 
+ik_drop_admins() {  # ik_drop_admins ФАЙЛ — убрать ADMINS (версии 1.2–1.3); код 0, если строка была
+  grep -qE '^ADMINS=.' "$1" 2>/dev/null || { sed -i '/^ADMINS=/d' "$1" 2>/dev/null; return 1; }
+  sed -i '/^ADMINS=/d' "$1"
+}
+
 ik_backup_dir() {
   local dir="$INSTALL_DIR/backups"
   mkdir -p "$dir" && chmod 700 "$dir"
@@ -153,6 +158,7 @@ ik_merge_env() {  # ik_merge_env ИМПОРТИРОВАННЫЙ_ENV
   local imported=$1 current="$INSTALL_DIR/.env" merged key
   merged=$(mktemp)
   cp "$imported" "$merged"
+  ik_drop_admins "$merged" || true   # администратор один — ADMIN_LOGIN
   for key in "${IK_SERVER_KEYS[@]}"; do ik_env_set "$key" "$(ik_env_get "$key" "$current")" "$merged"; done
   cp -p "$current" "$current.bak-$(date +%Y%m%d-%H%M%S)"
   cat "$merged" >"$current"

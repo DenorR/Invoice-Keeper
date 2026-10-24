@@ -320,13 +320,6 @@ valid_timezone() { [[ ! -d /usr/share/zoneinfo || -f /usr/share/zoneinfo/$1 ]]; 
 has_global_ipv6() { ip -6 route get 2001:4860:4860::8888 >/dev/null 2>&1 && ip -6 addr show scope global 2>/dev/null | grep -q inet6; }
 docker_major() { docker version --format '{{.Server.Version}}' 2>/dev/null | cut -d. -f1; }
 compose() { (cd "$INSTALL_DIR" && docker compose "$@"); }
-admin_logins() {  # основной администратор и логины из ADMINS — без паролей
-  local item items=()
-  printf '%s\n' "$(env_get ADMIN_LOGIN)"
-  IFS=',' read -ra items <<<"$(env_get ADMINS)"
-  for item in "${items[@]}"; do item=${item%%:*}; item=${item// /}; [[ -n $item ]] && printf '%s\n' "${item,,}"; done
-  return 0
-}
 
 project_running() { [[ -f $INSTALL_DIR/.env ]] && [[ -n $(compose ps -q app 2>/dev/null || true) ]]; }
 
@@ -674,11 +667,23 @@ install_files() {
   ln -sf "$INSTALL_DIR/installer/invoice-keeper" "$CLI_LINK"
 }
 
+drop_legacy_admins() {  # ADMINS из версий 1.2–1.3 больше не поддерживается: администратор один
+  local env_file="$INSTALL_DIR/.env"
+  if [[ ${1:-} == backup ]] && grep -qE '^ADMINS=.' "$env_file" 2>/dev/null; then
+    cp -p "$env_file" "$env_file.bak-$(date +%Y%m%d-%H%M%S)"
+  fi
+  if ik_drop_admins "$env_file"; then
+    ui_warn "Строка ADMINS удалена из .env" "Администратор в системе один — ${ADMIN_LOGIN:-$(env_get ADMIN_LOGIN)}. Дополнительные администраторы больше не входят."
+  fi
+  return 0
+}
+
 write_env() {
   local env_file="$INSTALL_DIR/.env"
   if [[ -f $env_file ]]; then cp -p "$env_file" "$env_file.bak-$(date +%Y%m%d-%H%M%S)"
   else cp "$INSTALL_DIR/.env.example" "$env_file"; fi
   chmod 600 "$env_file"
+  drop_legacy_admins
   env_set ADMIN_LOGIN "$ADMIN_LOGIN" "$env_file"
   env_set ADMIN_PASSWORD "$ADMIN_PASSWORD" "$env_file"
   env_set APP_TIMEZONE "$APP_TIMEZONE" "$env_file"
@@ -718,6 +723,7 @@ migrate_env() {  # обновление: дописать ключи, котор
   local env_file="$INSTALL_DIR/.env"
   [[ -z ${ACCESS_MODE:-} ]] && { [[ -n ${DOMAIN:-} ]] && ACCESS_MODE=https || ACCESS_MODE=http; }
   [[ -n $(env_get COMPOSE_PROJECT_NAME) ]] || env_set COMPOSE_PROJECT_NAME "$PROJECT_NAME" "$env_file"
+  drop_legacy_admins backup
   env_set COMPOSE_FILE "$(compose_files)" "$env_file"
   if [[ -z $(env_get PUBLIC_URL) ]]; then
     PUBLIC_URL=$([[ -n ${DOMAIN:-} ]] && echo "https://$DOMAIN" || echo "http://$(detect_ip)")
@@ -843,11 +849,10 @@ summary() {
   else tg="Telegram не подключён — invoice-keeper config"; fi
   local users="демо-данные выключены"
   [[ $(env_get SEED_DEMO_DATA) != false ]] && users="user, accountant (демо)"
-  local admins; admins=$(admin_logins | paste -sd, - | sed 's/,/, /g')
 
   printf '%s  %s\n' "${GREEN}◆${RESET}" "${BOLD}${GREEN}Invoice Keeper $(cat "$INSTALL_DIR/VERSION" 2>/dev/null) — ${ACTION_DONE}${RESET}"
   bar
-  local rows=("Панель|${BOLD}${url}${RESET}" "Swagger|${url}/api/v1/docs" "Администраторы|$admins" "Пользователи|$users"
+  local rows=("Панель|${BOLD}${url}${RESET}" "Swagger|${url}/api/v1/docs" "Администратор|$(env_get ADMIN_LOGIN)" "Пользователи|$users"
               "Напоминания|$tg" ---)
   [[ ${ADMIN_PASSWORD_GENERATED:-0} == 1 ]] && rows+=("Пароль админа|grep ^ADMIN_PASSWORD= $INSTALL_DIR/.env")
   [[ ${DEMO_PASSWORD_GENERATED:-0} == 1 ]] && rows+=("Пароль демо|grep ^DEMO_ $INSTALL_DIR/.env")
@@ -856,7 +861,7 @@ summary() {
   bar
   ui_line "${BOLD}Управление сервером${RESET}"
   ui_table "invoice-keeper status|состояние и проверка панели" "invoice-keeper logs|журнал приложения" \
-    "invoice-keeper config|изменить настройки" "invoice-keeper admins|администраторы и как их добавить" \
+    "invoice-keeper config|изменить настройки" \
     "invoice-keeper backups|резервные копии и перенос" \
     "invoice-keeper help|все команды"
   bar
@@ -942,7 +947,7 @@ main() {
       cp "$IMPORT_WORK/env" "$INSTALL_DIR/.env"; chmod 600 "$INSTALL_DIR/.env"
       for key in "${IK_SERVER_KEYS[@]}"; do ik_env_set "$key" "" "$INSTALL_DIR/.env"; done   # адрес — заново, IP другой
       load_env
-      ui_done "Настройки из архива" "администраторы $(admin_logins | paste -sd, - | sed 's/,/, /g'), часовой пояс $APP_TIMEZONE, Telegram $([[ -n $TG_TOKEN ]] && echo подключён || echo нет)"
+      ui_done "Настройки из архива" "администратор $ADMIN_LOGIN, часовой пояс $APP_TIMEZONE, Telegram $([[ -n $TG_TOKEN ]] && echo подключён || echo нет)"
       step_address; step_confirm
       ui_section "Подготовка"
       SPIN_NOTE="$INSTALL_DIR" spin "Копирование файлов" install_files

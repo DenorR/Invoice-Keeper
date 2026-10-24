@@ -22,7 +22,7 @@ from app.domain.dates import Clock
 from app.errors import ApiError
 from app.middleware import SecurityHeadersMiddleware
 from app.services.reminders import Notifier
-from app.services.users import ensure_admins
+from app.services.users import ensure_admin
 
 log = logging.getLogger("app")
 
@@ -53,7 +53,7 @@ def bootstrap(container: Container) -> None:
     settings = container.settings
     run_migrations(settings.database_url)
     with container.session_factory() as db:
-        ensure_admins(db, settings)
+        ensure_admin(db, settings)
         db.commit()
     if settings.seed_demo_data:
         from app.seed import seed_if_empty

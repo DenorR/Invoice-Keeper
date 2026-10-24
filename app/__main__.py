@@ -16,7 +16,7 @@ def reset_database(with_demo: bool) -> None:
     from app.container import build_container
     from app.main import run_migrations
     from app.seed import seed
-    from app.services.users import ensure_admins
+    from app.services.users import ensure_admin
 
     settings = load_settings()
     cfg = AlembicConfig()
@@ -29,7 +29,7 @@ def reset_database(with_demo: bool) -> None:
 
     container = build_container(settings)
     with container.session_factory() as db:
-        ensure_admins(db, settings)
+        ensure_admin(db, settings)
         if with_demo:
             seed(db, container.clock, settings)
         db.commit()

@@ -116,35 +116,33 @@ def test_user_crud_and_conflicts(client, admin):
     assert logins == ["admin"]
 
 
-def test_several_admins_from_env(settings, clock, notifier):
+def test_single_admin_synced_from_env(settings, clock, notifier):
+    """Администратор один: смена логина/пароля в .env применяется к нему же, лишние администраторы удаляются."""
     from fastapi.testclient import TestClient
-    from pydantic import ValidationError
 
     from app.config import Settings
     from app.main import create_app
+    from app.models import User
+    from app.services.security import hash_password
 
-    def make(admins):
-        data = {**settings.model_dump(), "admin_password": ADMIN[1], "admins": admins}
-        return Settings(_env_file=None, **data)
+    def make(login_, password):
+        return Settings(_env_file=None, **{**settings.model_dump(), "admin_login": login_, "admin_password": password})
 
-    with TestClient(create_app(make("Anna:Anna-pass-1, oleg:Oleg:pass:2"), clock=clock, notifier=notifier,
-                               start_background=False)) as client:
-        anna = login(client, "anna", "Anna-pass-1")
-        login(client, "oleg", "Oleg:pass:2")  # в пароле может быть двоеточие
-        users = {u["login"]: u for u in client.get("/api/v1/users", headers=anna).json()}
-        assert {"admin", "anna", "oleg"} <= set(users)
-        assert all(users[name]["managed_by_env"] for name in ("admin", "anna", "oleg"))
-        # дополнительный администратор тоже неизменяем через API, его логин занят
-        assert client.patch(f"/api/v1/users/{users['oleg']['id']}", headers=anna, json={"name": "x"}).status_code == 403
-        assert client.post("/api/v1/users", headers=anna, json={"login": "oleg", "password": "x1234567"}).status_code == 409
+    def start(cfg):
+        return TestClient(create_app(cfg, clock=clock, notifier=notifier, start_background=False))
 
-    # убрали Олега из .env → после перезапуска у него нет доступа, остальные работают
-    with TestClient(create_app(make("anna:Anna-pass-1"), clock=clock, notifier=notifier,
-                               start_background=False)) as client:
-        assert client.post("/api/v1/auth/login", json={"login": "oleg", "password": "Oleg:pass:2"}).status_code == 401
-        login(client, "anna", "Anna-pass-1")
-        login(client, *ADMIN)
+    with start(make(*ADMIN)) as client:
+        old_session = login(client, *ADMIN)
+        # лишний администратор — как после версии с ADMINS
+        with client.app.state.container.session_factory() as db:
+            db.add(User(login="anna", role="admin", password_hash=hash_password("Anna-pass-1")))
+            db.commit()
 
-    for bad in ("anna", "an:Long-pass-1", "anna:short", "anna:Anna-pass-1,anna:Other-pass-2", f"{ADMIN[0]}:Some-pass-1"):
-        with pytest.raises(ValidationError):
-            make(bad)
+    with start(make("owner", "Owner-pass-1")) as client:
+        assert client.get("/api/v1/auth/me", headers=old_session).status_code == 401   # сессии сброшены
+        assert client.post("/api/v1/auth/login", json={"login": ADMIN[0], "password": ADMIN[1]}).status_code == 401
+        assert client.post("/api/v1/auth/login", json={"login": "anna", "password": "Anna-pass-1"}).status_code == 401
+        owner = login(client, "owner", "Owner-pass-1")
+        admins = [u for u in client.get("/api/v1/users", headers=owner).json() if u["role"] == "admin"]
+        assert [a["login"] for a in admins] == ["owner"]
+        assert client.post("/api/v1/users", headers=owner, json={"login": "owner", "password": "x1234567"}).status_code == 409

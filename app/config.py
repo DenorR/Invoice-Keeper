@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import re
 from functools import cached_property
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, SecretStr, ValidationError, field_validator, model_validator
+from pydantic import Field, SecretStr, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -31,9 +30,6 @@ class Settings(BaseSettings):
 
     admin_login: str = Field(default="admin", min_length=3, max_length=64)
     admin_password: SecretStr
-    # Дополнительные администраторы: ADMINS=anna:Пароль-Анны,oleg:Пароль-Олега
-    # (логин:пароль через запятую; в пароле не должно быть запятой, длина — от 8 символов)
-    admins: SecretStr | None = None
     session_ttl_hours: int = Field(default=168, ge=1)
     cookie_secure: bool = False
 
@@ -67,33 +63,6 @@ class Settings(BaseSettings):
     @classmethod
     def _normalize_admin_login(cls, value: str) -> str:
         return value.strip().lower()
-
-    @model_validator(mode="after")
-    def _validate_admins(self) -> "Settings":
-        self.admin_accounts  # ошибка формата ADMINS видна сразу при старте
-        return self
-
-    @cached_property
-    def admin_accounts(self) -> list[tuple[str, str]]:
-        """Все администраторы из .env: основной (ADMIN_LOGIN) и дополнительные (ADMINS)."""
-        accounts = [(self.admin_login, self.admin_password.get_secret_value())]
-        raw = self.admins.get_secret_value() if self.admins else ""
-        for item in filter(None, (part.strip() for part in raw.split(","))):
-            login, sep, password = item.partition(":")
-            login = login.strip().lower()
-            if not sep or not re.fullmatch(r"[a-z0-9_.-]{3,64}", login):
-                raise ValueError("ADMINS: ожидается формат логин:пароль через запятую, "
-                                 "логин — 3–64 символа (латиница, цифры, . _ -)")
-            if len(password) < 8:
-                raise ValueError(f"ADMINS: пароль администратора «{login}» короче 8 символов")
-            if login in {existing for existing, _ in accounts}:
-                raise ValueError(f"ADMINS: логин «{login}» указан дважды")
-            accounts.append((login, password))
-        return accounts
-
-    @property
-    def admin_logins(self) -> set[str]:
-        return {login for login, _ in self.admin_accounts}
 
     @cached_property
     def tz(self) -> ZoneInfo:

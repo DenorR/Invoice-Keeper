@@ -58,14 +58,6 @@ read_passphrase() {  # read_passphrase ПЕРЕМЕННАЯ 1|0 — с подт�
   printf -v "$1" '%s' "$first"
 }
 
-admin_logins() {  # основной администратор и логины из ADMINS — без паролей
-  local item items=()
-  printf '%s\n' "$(env_get ADMIN_LOGIN)"
-  IFS=',' read -ra items <<<"$(env_get ADMINS)"
-  for item in "${items[@]}"; do item=${item%%:*}; item=${item// /}; [[ -n $item ]] && printf '%s\n' "${item,,}"; done
-  return 0
-}
-
 usage() {
   cat <<EOF
 
@@ -80,7 +72,6 @@ usage() {
     start | stop            запустить / остановить
     restart                 перезапустить и применить изменения из .env
     config                  мастер настройки: пароль, адрес, Telegram, часовой пояс
-    admins                  администраторы и как их добавить
 
   ${BRAND}Резервные копии и перенос${RESET}
     backup                  копия базы сейчас
@@ -121,31 +112,11 @@ cmd_info() {
   Версия           $(cat "$INSTALL_DIR/VERSION" 2>/dev/null)
   Панель           $url
   Swagger          $url/api/v1/docs
-  Администраторы   $(admin_logins | paste -sd, - | sed 's/,/, /g')
+  Администратор    $(env_get ADMIN_LOGIN)
   Часовой пояс     $(env_get APP_TIMEZONE)
   Telegram         ${token:+бот ${bot:-(не отвечает)}, }чат ${chat:-не выбран}
   Настройки        $ENV_FILE
   Резервные копии  $INSTALL_DIR/backups
-EOF
-}
-
-cmd_admins() {
-  echo
-  echo "  ${BOLD}Администраторы${RESET} ${DIM}(задаются только в .env, через панель не меняются)${RESET}"
-  admin_logins | sed 's/^/    • /'
-  cat <<EOF
-
-  ${BOLD}Как добавить или убрать администратора${RESET}
-    1. Откройте настройки:   nano $ENV_FILE
-    2. Основной администратор — строки ADMIN_LOGIN и ADMIN_PASSWORD.
-       Дополнительные — одна строка ADMINS, пары логин:пароль через запятую:
-         ADMINS=anna:Пароль-Анны-1,oleg:Пароль-Олега-2
-       (логин — латиница/цифры, пароль — от 8 символов и без запятой)
-    3. Примените:            invoice-keeper restart
-
-  Убранный из .env администратор после перезапуска теряет доступ.
-  Пароль основного администратора можно сменить и через мастер: invoice-keeper config
-
 EOF
 }
 
@@ -304,7 +275,6 @@ cmd_uninstall() {
 case "${1:-help}" in
   status) cmd_status ;;
   info) cmd_info ;;
-  admins) cmd_admins ;;
   logs) compose logs -f --tail=100 "${2:-app}" ;;
   start) need_root start; compose up -d >/dev/null 2>&1; ok "Запущено" ;;
   stop) need_root stop; compose stop >/dev/null 2>&1; ok "Остановлено" ;;
