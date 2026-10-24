@@ -64,6 +64,26 @@ ADMINS=anna:Пароль-Анны-1,oleg:Пароль-Олега-2
 
 Скопируйте на сервер новый `.run` и запустите его так же. Настройки и данные сохранятся, перед обновлением делается копия базы.
 
+## Полное удаление
+
+На сервере:
+
+```bash
+invoice-keeper uninstall --purge
+docker image rm invoice-keeper:latest caddy:2-alpine
+rm -f /root/invoice-keeper-*.run /var/log/invoice-keeper-install.log
+```
+
+- Первая команда спросит подтверждение (`д`) и удалит приложение, базу, резервные копии, настройки и команду `invoice-keeper`.
+- Вторая и третья уберут образы Docker, установщик и журнал установки.
+
+Docker и открытые порты остаются, их можно убрать, если они больше не нужны:
+
+```bash
+ufw delete allow 80/tcp && ufw delete allow 443/tcp
+apt purge -y docker.io docker-compose-v2 docker-buildx
+```
+
 ## Если что-то не так
 
 - **`scp` не спросил пароль и написал «1 file(s) copied»** — пропущено двоеточие после адреса сервера.
