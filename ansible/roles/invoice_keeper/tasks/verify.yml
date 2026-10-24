@@ -17,5 +17,8 @@
       - "Invoice Keeper {{ ik_version }} — {{ ik_public_url }}"
       - "Swagger: {{ ik_public_url }}/api/v1/docs"
       - "Суперадмин: {{ ik_admin_login }} (пароль — в Vault)"
-      - "Telegram: {{ 'чат ' ~ ik_telegram_chat_id if ik_telegram_bot_token else 'не подключён' }}"
+      - >-
+        Telegram: {{ ('напоминания в чат ' ~ ik_telegram_chat_id) if (ik_telegram_bot_token | length > 0 and ik_telegram_chat_id | string | length > 0)
+                     else ('бот запущен, чат не задан: напишите /chatid в группе с ботом и впишите ID в ik_telegram_chat_id'
+                           if ik_telegram_bot_token | length > 0 else 'не подключён') }}
       - "Управление на сервере: {{ ik_cli_link | basename }} help"

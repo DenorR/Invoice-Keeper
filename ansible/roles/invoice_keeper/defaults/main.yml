@@ -20,9 +20,9 @@ ik_admin_password: ""                                  # обязательно;
 
 # ─── адрес панели ───
 ik_access_mode: https                                  # https — Caddy + Let's Encrypt; http — без шифрования
-ik_domain: "{{ ansible_default_ipv4.address }}.sslip.io"   # для https: свой домен или IP.sslip.io
+ik_domain: "{{ ansible_facts['default_ipv4']['address'] }}.sslip.io"   # для https: свой домен или IP.sslip.io
 ik_http_port: 80                                       # для http
-ik_http_host: "{{ ansible_default_ipv4.address }}"
+ik_http_host: "{{ ansible_facts['default_ipv4']['address'] }}"
 ik_public_url: >-
   {{ ('https://' ~ ik_domain) if ik_access_mode == 'https'
      else ('http://' ~ ik_http_host ~ ('' if (ik_http_port | int) == 80 else ':' ~ ik_http_port)) }}

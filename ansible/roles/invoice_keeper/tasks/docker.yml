@@ -15,26 +15,23 @@
   when:
     - ik_manage_docker | bool
     - ik_compose_check.rc != 0
-    - ansible_distribution == 'Ubuntu'
+    - ansible_facts['distribution'] == 'Ubuntu'
 
 - name: Установить Docker и Compose из репозитория Docker (Debian)
   when:
     - ik_manage_docker | bool
     - ik_compose_check.rc != 0
-    - ansible_distribution == 'Debian'
+    - ansible_facts['distribution'] == 'Debian'
   block:
-    - name: Ключ репозитория Docker
-      ansible.builtin.get_url:
-        url: https://download.docker.com/linux/debian/gpg
-        dest: /etc/apt/keyrings/docker.asc
-        mode: "0644"
-
     - name: Репозиторий Docker
-      ansible.builtin.apt_repository:
-        repo: >-
-          deb [arch={{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_architecture] | default(ansible_architecture) }}
-          signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable
-        filename: docker
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: [deb]
+        uris: https://download.docker.com/linux/debian
+        suites: ["{{ ansible_facts['distribution_release'] }}"]
+        components: [stable]
+        architectures: ["{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}.get(ansible_facts['architecture'], ansible_facts['architecture']) }}"]
+        signed_by: https://download.docker.com/linux/debian/gpg
 
     - name: Пакеты Docker
       ansible.builtin.apt:
@@ -66,5 +63,5 @@
     ik_ipv6_enabled: >-
       {{ (ik_ipv6 | string | lower in ['true', 'yes', '1'])
          or (ik_ipv6 | string | lower == 'auto'
-             and (ansible_default_ipv6.address | default('')) | length > 0
+             and (ansible_facts['default_ipv6']['address'] | default('')) | length > 0
              and ((ik_docker_version.stdout.split() + ['', '', '0'])[2].split('.')[0] | int) >= 27) }}

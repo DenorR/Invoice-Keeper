@@ -19,8 +19,6 @@
       msg: "ik_demo_user_password / ik_demo_accountant_password: при ik_seed_demo_data: true задайте оба, от 6 символов"
     - ok: "{{ (ik_reminder_days_before | int) >= 3 }}"
       msg: "ik_reminder_days_before: не меньше 3 (требование кейса)"
-    - ok: "{{ (ik_telegram_bot_token | length == 0) or (ik_telegram_chat_id | string | length > 0) }}"
-      msg: "ik_telegram_chat_id: при заданном токене бота нужен ID чата (бот покажет его по команде /chatid)"
     - ok: >-
         {{ [ik_admin_password, ik_demo_user_password, ik_demo_accountant_password, ik_telegram_bot_token, ik_telegram_proxy]
            | select('search', "['\n]") | list | length == 0 }}

@@ -43,7 +43,7 @@
 
 ## 2. Требования
 
-**Управляющая машина** (откуда запускается плейбук): Linux, macOS или WSL. Нужны:
+**Управляющая машина** (откуда запускается плейбук): Linux, macOS или WSL в Windows. Нужны:
 
 * `ansible-core` 2.15 или новее. Проверено на 2.21.
 * коллекции из `requirements.yml`: `community.docker` (`docker_compose_v2`) и `community.general` (`ufw`).
@@ -60,6 +60,11 @@
 ## 3. Быстрый старт
 
 Все команды выполняются на управляющей машине, в папке `ansible/` репозитория.
+
+> **С Windows** — в WSL (Ubuntu): `sudo apt install -y ansible`, SSH-ключ: `ssh-keygen -t ed25519`
+> и `ssh-copy-id root@IP`. Скопируйте `ansible/` и `deploy-kit/` в домашнюю папку WSL
+> (`cp -r /mnt/d/путь/ansible /mnt/d/путь/deploy-kit ~/invoice-keeper/`) и работайте там:
+> из папок на дисках Windows (`/mnt/c`, `/mnt/d`) Ansible не читает `ansible.cfg` — они доступны всем на запись.
 
 1. Поставьте коллекции:
 
@@ -122,7 +127,7 @@ invoice_keeper:
 | `ik_http_port` | `80` | порт для `http` |
 | `ik_timezone` | `Europe/Moscow` | часовой пояс сроков и напоминаний |
 | `ik_telegram_bot_token` | — | токен бота. **У каждого сервера свой бот** |
-| `ik_telegram_chat_id` | — | ID чата (бот покажет по `/chatid`); обязателен при заданном токене |
+| `ik_telegram_chat_id` | — | ID чата. Можно сначала раскатить с одним токеном: бот запустится и ответит на `/chatid` в группе, затем впишите ID и запустите плейбук ещё раз |
 | `ik_telegram_proxy` | — | прокси для Telegram: `socks5://…` или `http://…` |
 | `ik_reminder_days_before` | `3` | за сколько дней напоминать (не меньше 3) |
 | `ik_seed_demo_data` | `false` | загрузить демо-данные в пустую базу |
@@ -155,7 +160,13 @@ ansible-playbook site.yml --ask-vault-pass --limit ik-new
 или `ansible-vault edit group_vars/invoice_keeper/vault.yml` и запустите плейбук.
 `.env` перегенерируется, контейнеры пересоздаются. Смена пароля суперадмина завершает его сессии.
 
-**Посмотреть, что изменится, ничего не меняя:**
+**Проверить связь с серверами** (Vault нужен, потому что переменные зашифрованы):
+
+```bash
+ansible invoice_keeper -m ping --ask-vault-pass
+```
+
+**Посмотреть, что изменится, ничего не меняя** (на уже развёрнутых серверах):
 
 ```bash
 ansible-playbook site.yml --ask-vault-pass --check --diff
