@@ -1,6 +1,6 @@
 # Invoice Keeper — установка на сервер
 
-Один файл `invoice-keeper-1.2.1.run` ставит всё сам: приложение, Docker (если его нет), HTTPS и Telegram-бота.
+Один файл `invoice-keeper-1.2.2.run` ставит всё сам: приложение, Docker (если его нет), HTTPS и Telegram-бота.
 
 **Нужно:** сервер Ubuntu 22.04+ или Debian 12, доступ root, свободные порты 80 и 443.
 
@@ -9,16 +9,16 @@
 **1. На своём компьютере** — скопировать файл на сервер. Двоеточие в конце обязательно:
 
 ```bash
-scp invoice-keeper-1.2.1.run root@IP_СЕРВЕРА:
+scp invoice-keeper-1.2.2.run root@IP_СЕРВЕРА:
 ```
 
-В Windows укажите полный путь к файлу: `scp C:\путь\invoice-keeper-1.2.1.run root@IP_СЕРВЕРА:`
+В Windows укажите полный путь к файлу: `scp C:\путь\invoice-keeper-1.2.2.run root@IP_СЕРВЕРА:`
 
 **2. На сервере** — запустить установщик:
 
 ```bash
 ssh root@IP_СЕРВЕРА
-bash invoice-keeper-1.2.1.run
+bash invoice-keeper-1.2.2.run
 ```
 
 **3. Ответить на 5 вопросов** (выбор — стрелками ↑↓, подтверждение — Enter):
@@ -92,5 +92,5 @@ apt purge -y docker.io docker-compose-v2 docker-buildx
 - **Мастер не нашёл чат** — этот бот запущен где-то ещё. Введите ID чата вручную: бот пришлёт его на команду `/chatid`.
 - **Ошибка установки** — подробности в `/var/log/invoice-keeper-install.log`. Повторный запуск установщика безопасен.
 
-Установка без вопросов: `ADMIN_PASSWORD=… TELEGRAM_BOT_TOKEN=… TELEGRAM_CHAT_ID=… bash invoice-keeper-1.2.1.run --yes`.
-Все параметры: `bash invoice-keeper-1.2.1.run --help`.
+Установка без вопросов: `ADMIN_PASSWORD=… TELEGRAM_BOT_TOKEN=… TELEGRAM_CHAT_ID=… bash invoice-keeper-1.2.2.run --yes`.
+Все параметры: `bash invoice-keeper-1.2.2.run --help`.
