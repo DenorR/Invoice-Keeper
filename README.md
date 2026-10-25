@@ -174,6 +174,9 @@ python -m app
 
 ## 🌐 Развёртывание на сервере
 
+> 🧭 **Впервые разворачиваете?** Простой пошаговый гайд «от нуля до панели за 15 минут» через Ansible —
+> [**ansible/README.md**](ansible/README.md). Подойдёт, даже если вы ни разу не работали с серверами.
+
 Три способа, результат одинаковый: Docker, HTTPS через Caddy (свой домен или `IP.sslip.io`), база на Docker-томе,
 миграции при обновлении применяются сами. **Пошагово, с проверкой, обновлением, копиями и решением проблем —
 [docs/DEPLOY.md](docs/DEPLOY.md).**
@@ -460,7 +463,8 @@ npm run build      # сборка в app/static
 | [**docs/DEPLOY.md**](docs/DEPLOY.md) | развёртывание: выбор способа, Ansible, установщик, Docker Compose, проверка, обновление, копии, проблемы |
 | [**docs/ARCHITECTURE.md**](docs/ARCHITECTURE.md) | карта системы, стек, модель данных, жизненный цикл периода, напоминания, ключевые решения |
 | [**docs/API.md**](docs/API.md) | REST API: авторизация, ошибки, все эндпоинты, сценарии, клиенты на Python, JavaScript, TypeScript |
-| [ansible/README.md](ansible/README.md) | роль Ansible: переменные, теги, откат, несколько экземпляров |
+| [ansible/README.md](ansible/README.md) | простой пошаговый гайд: установка через Ansible с нуля за 15 минут |
+| [ansible/REFERENCE.md](ansible/REFERENCE.md) | справочник роли Ansible: переменные, теги, откат, несколько экземпляров |
 | [deploy-kit/README.md](deploy-kit/README.md) | руководство администратора сервера: мастер, команда `invoice-keeper`, копии, перенос |
 | [web/DESIGN.md](web/DESIGN.md) | правила интерфейса: стекло, отступы, типографика, движение |
 | [openapi.yaml](openapi.yaml) | спецификация OpenAPI 3.1 |

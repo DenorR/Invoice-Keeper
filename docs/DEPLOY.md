@@ -151,6 +151,9 @@ python -m app
 
 ## 5. Ansible — инфраструктура кодом
 
+> 🧭 **Пошаговый гайд для новичка** — установка Ansible на Windows, macOS и Linux, ключ SSH, готовые файлы
+> для копирования, Telegram и разбор ошибок: [**ansible/README.md**](../ansible/README.md).
+
 Роль [`ansible/roles/invoice_keeper`](../ansible/roles/invoice_keeper) описывает сервер целиком: ставит Docker,
 раскладывает релиз, генерирует `.env` из переменных, запускает с HTTPS, включает ночные копии и проверяет, что
 панель открывается. **Каждый хост в inventory — независимый экземпляр** со своей базой и своим ботом.
@@ -259,7 +262,7 @@ invoice_keeper:
 | `ik_env_extra` | `{}` | любые строки `.env`, например `{ LOG_LEVEL: DEBUG }` |
 
 Все переменные с комментариями: [`defaults/main.yml`](../ansible/roles/invoice_keeper/defaults/main.yml),
-подробное руководство роли: [`ansible/README.md`](../ansible/README.md).
+справочник роли: [`ansible/REFERENCE.md`](../ansible/REFERENCE.md).
 
 ### 5.4. Типовые операции
 
@@ -480,4 +483,4 @@ docker compose cp app:/app/data/backup.db ./invoice-keeper-$(date +%F).db
 | Ansible: `пароль суперадмина обязателен` | забыли `--ask-vault-pass` |
 | Ansible: `Не найден релиз deploy-kit/invoice-keeper-*.run` | соберите: `scripts/build-installer.sh` |
 
-Больше случаев: [`deploy-kit/README.md`](../deploy-kit/README.md) (раздел 14) и [`ansible/README.md`](../ansible/README.md) (раздел 7).
+Больше случаев: [`deploy-kit/README.md`](../deploy-kit/README.md) (раздел 14) и [`ansible/REFERENCE.md`](../ansible/REFERENCE.md) («Решение проблем»).
