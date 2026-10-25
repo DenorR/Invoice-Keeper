@@ -120,43 +120,149 @@ flowchart LR
 
 ## 🚀 Быстрый старт
 
-### Вариант 1. Docker (рекомендуется)
+Два способа на выбор. Результат одинаковый: панель на **http://localhost:8080**, Swagger —
+**http://localhost:8080/api/v1/docs**, демо-данные загружаются сами.
 
-Нужен Docker с Compose v2.
+| | Вариант 1. Docker | Вариант 2. Python, без Docker |
+|---|---|---|
+| Что нужно | Docker | Python 3.12 или новее |
+| Команд для запуска | 2 | 5 |
+| Когда удобнее | Docker уже стоит или его не жалко поставить | не хочется ставить Docker |
+
+Сначала получите папку проекта: распакуйте архив `invoice-keeper-1.6.0.zip` или склонируйте репозиторий
+и откройте в ней терминал.
 
 ```bash
-cp .env.example .env          # при желании задайте ADMIN_PASSWORD и токен бота
-docker compose up -d --build
+cd invoice-keeper-1.6.0          # или папка, куда склонировали репозиторий
 ```
 
-Откройте **http://localhost:8080** — веб-панель, **http://localhost:8080/api/v1/docs** — Swagger.
+### Вариант 1. Docker
 
-### Вариант 2. Без Docker
+**Шаг 1. Проверьте, есть ли Docker.**
 
-Нужен Python **3.12+**. Node.js **не нужен**: собранная панель уже лежит в `app/static`.
+```bash
+docker compose version
+```
 
-Linux / macOS:
+Если напечаталась версия (`Docker Compose version v2…`), переходите к шагу 2.
+Если `command not found` или «не является командой» — установите Docker:
+
+* **Windows 10/11.** Скачайте и установите [Docker Desktop](https://www.docker.com/products/docker-desktop/),
+  при установке оставьте галочку **Use WSL 2**. Перезагрузите компьютер, запустите Docker Desktop
+  и дождитесь внизу окна статуса **Engine running**.
+* **macOS.** Установите [Docker Desktop](https://www.docker.com/products/docker-desktop/) для своего процессора
+  (Apple Silicon или Intel) или через Homebrew: `brew install --cask docker`. Запустите приложение Docker
+  и дождитесь, пока значок кита в строке меню перестанет мигать.
+* **Linux (Ubuntu, Debian).** Официальный скрипт установки:
+
+  ```bash
+  curl -fsSL https://get.docker.com | sudo sh
+  sudo usermod -aG docker $USER      # чтобы запускать docker без sudo
+  ```
+
+  Выйдите из системы и войдите снова (или перезагрузитесь), чтобы права применились.
+
+Снова выполните `docker compose version` — теперь должна напечататься версия.
+
+**Шаг 2. Создайте файл настроек** из примера:
 
 ```bash
 cp .env.example .env
+```
+
+В Windows PowerShell: `Copy-Item .env.example .env`.
+
+**Шаг 3. Запустите:**
+
+```bash
+docker compose up -d --build
+```
+
+Первый раз сборка займёт 1–2 минуты. Готово — откройте **http://localhost:8080** и войдите
+(учётные записи — [ниже](#учётные-записи)).
+
+| Задача | Команда |
+|---|---|
+| посмотреть журнал приложения | `docker compose logs -f app` (выход — Ctrl+C) |
+| применить изменения `.env` (например, токен бота) | `docker compose up -d` |
+| вернуть демо-данные в исходное состояние | `docker compose exec app python -m app reset-db` |
+| остановить (данные сохранятся) | `docker compose down` |
+| удалить вместе с базой | `docker compose down -v` |
+
+> Порт 8080 занят другой программой? Добавьте в `.env` строку `APP_PORT=8081` и откройте http://localhost:8081.
+
+### Вариант 2. Python, без Docker
+
+Node.js **не нужен**: собранная веб-панель уже лежит в `app/static`. Всё ставится в отдельную папку `.venv`
+внутри проекта и ничего не меняет в системе.
+
+**Шаг 1. Установите Python 3.12 или новее.** Проверьте, какой уже есть:
+
+```bash
+python3 --version        # Windows: py --version
+```
+
+Если версия ниже 3.12 или команда не найдена:
+
+* **Windows.** Скачайте установщик с [python.org/downloads](https://www.python.org/downloads/).
+  При установке **обязательно отметьте галочку «Add python.exe to PATH»**. Или одной командой
+  в PowerShell: `winget install Python.Python.3.12`. После установки откройте **новое** окно терминала.
+* **macOS.** `brew install python@3.12` (или установщик с [python.org](https://www.python.org/downloads/)).
+* **Ubuntu 24.04 и новее.** Python 3.12 уже есть, доустановите модули: `sudo apt install -y python3-venv python3-pip`.
+* **Ubuntu 22.04.** Поставьте 3.12 из PPA:
+  `sudo add-apt-repository -y ppa:deadsnakes/ppa && sudo apt install -y python3.12 python3.12-venv`,
+  а в шагах ниже вместо `python3` пишите `python3.12`.
+
+**Шаг 2. Создайте файл настроек** из примера:
+
+```bash
+cp .env.example .env              # Windows PowerShell: Copy-Item .env.example .env
+```
+
+**Шаг 3. Создайте окружение и установите зависимости** (1–2 минуты).
+
+Linux и macOS:
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python -m app
 ```
 
-Windows (PowerShell):
+Windows (PowerShell или командная строка) — без активации окружения, чтобы не менять политику запуска скриптов:
 
 ```powershell
-Copy-Item .env.example .env
 py -3.12 -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python -m app
+.venv\Scripts\python -m pip install -r requirements.txt
 ```
 
-При первом запуске приложение само создаёт базу (`data/invoice-keeper.db`), применяет миграции,
-создаёт администратора из `.env` и загружает демо-данные.
+**Шаг 4. Запустите:**
+
+```bash
+python -m app                      # Windows: .venv\Scripts\python -m app
+```
+
+Когда в терминале появится строка `Invoice Keeper запущен: панель http://localhost:8080/`, откройте
+**http://localhost:8080**. При первом запуске приложение само создаёт базу `data/invoice-keeper.db`,
+применяет миграции, заводит администратора из `.env` и загружает демо-данные.
+
+**Шаг 5. Остановить** — `Ctrl+C` в этом терминале. Данные остаются в `data/`.
+
+Запустить снова (зависимости ставить уже не нужно):
+
+```bash
+source .venv/bin/activate && python -m app       # Windows: .venv\Scripts\python -m app
+```
+
+| Задача | Команда |
+|---|---|
+| вернуть демо-данные в исходное состояние | `python -m app reset-db` (Windows: `.venv\Scripts\python -m app reset-db`) |
+| пустая база без демо-данных | `python -m app reset-db --empty` |
+| другой порт, если 8080 занят | в `.env` строка `PORT=8081`, затем снова запуск |
+
+> **Если что-то не так.** `No module named …` — не активировано окружение (Linux/macOS: `source .venv/bin/activate`)
+> или зависимости не установлены (шаг 3). `ADMIN_PASSWORD: Field required` — нет файла `.env` (шаг 2).
+> `address already in use` — порт занят, смените `PORT` в `.env`.
 
 ### Учётные записи
 
