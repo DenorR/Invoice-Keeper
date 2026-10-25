@@ -644,6 +644,10 @@ a.ik-stat:active { transform: scale(0.99); }
   flex-direction: column;
   gap: 6px;
   min-height: 118px;
+  /* ячейка не шире своей колонки, что бы ни было внутри: иначе плашка с длинным названием
+     раздвигает её и залезает на соседний день (в некоторых браузерах кнопка в сетке не сжимается) */
+  min-width: 0;
+  overflow: hidden;
   padding: 8px;
   text-align: left;
   border-right: 1px solid var(--ik-border);
@@ -689,6 +693,7 @@ a.ik-stat:active { transform: scale(0.99); }
   align-items: center;
   gap: 6px;
   min-width: 0;
+  max-width: 100%;
   padding: 3px 6px;
   border-radius: 6px;
   font-size: 12px;
