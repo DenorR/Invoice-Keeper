@@ -29,3 +29,6 @@ web/dist/
 # Ansible: реальные inventory и секреты
 ansible/inventory.yml
 ansible/group_vars/*/vault.yml
+
+# локальные настройки Claude Code (запуск dev-серверов)
+.claude/

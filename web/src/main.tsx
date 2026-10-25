@@ -1,9 +1,11 @@
+import "@fontsource-variable/exo-2";
+import "@fontsource-variable/inter";
 import "@mantine/core/styles.css";
 import "@mantine/dates/styles.css";
 import "@mantine/notifications/styles.css";
 import "./styles.css";
 
-import { MantineProvider, createTheme } from "@mantine/core";
+import { MantineProvider } from "@mantine/core";
 import { DatesProvider } from "@mantine/dates";
 import { ModalsProvider } from "@mantine/modals";
 import { Notifications } from "@mantine/notifications";
@@ -15,15 +17,9 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 import { App } from "./App";
 import { AuthProvider } from "./auth";
+import { cssVariablesResolver, theme } from "./theme";
 
 dayjs.locale("ru");
-
-const theme = createTheme({
-  primaryColor: "blue",
-  defaultRadius: "md",
-  fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-  headings: { fontWeight: "700" },
-});
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,7 +29,7 @@ const queryClient = new QueryClient({
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <MantineProvider theme={theme} defaultColorScheme="auto">
+    <MantineProvider theme={theme} cssVariablesResolver={cssVariablesResolver} defaultColorScheme="auto">
       <DatesProvider settings={{ locale: "ru", firstDayOfWeek: 1 }}>
         <QueryClientProvider client={queryClient}>
           <ModalsProvider labels={{ confirm: "Подтвердить", cancel: "Отмена" }}>

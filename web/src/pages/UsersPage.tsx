@@ -67,11 +67,11 @@ export function UsersPage() {
                   <Table.Td>{u.name || "—"}</Table.Td>
                   <Table.Td>
                     {u.role === "admin" ? (
-                      <Badge color="grape" variant="light">
+                      <Badge color="navy" variant="dot">
                         Администратор
                       </Badge>
                     ) : (
-                      <Badge color="blue" variant="light">
+                      <Badge color="blue" variant="dot">
                         Пользователь
                       </Badge>
                     )}

@@ -8,7 +8,7 @@ info:
     \  управляет регулярными платежами и пользователями. Ограничения действуют в API.\n\
     * Даты — в формате `YYYY-MM-DD` в часовом поясе приложения. Суммы — строки с двумя\n\
     \  знаками после запятой, итоги — отдельно по каждой валюте (RUB, USD, EUR)."
-  version: 1.5.0
+  version: 1.6.0
 paths:
   /api/v1/auth/login:
     post:
@@ -237,7 +237,8 @@ paths:
       - Регулярные платежи
       summary: Создание регулярного платежа
       description: Если до срока меньше дней, чем окно напоминания, напоминание уходит
-        сразу.
+        сразу. remind_days — своё окно для этого платежа; не задано — действует общая
+        настройка.
       operationId: create_recurring_api_v1_recurring_payments_post
       security:
       - HTTPBearer: []
@@ -250,6 +251,224 @@ paths:
               $ref: '#/components/schemas/RecurringPaymentCreate'
       responses:
         '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecurringPaymentOut'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Недостаточно прав
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/v1/recurring-payments/bulk/stop:
+    post:
+      tags:
+      - Регулярные платежи
+      summary: Прекращение нескольких регулярных платежей
+      description: 'Все или ничего: если хотя бы одного платежа нет, ничего не меняется
+        (404 со списком missing_ids).'
+      operationId: bulk_stop_recurring_api_v1_recurring_payments_bulk_stop_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkIds'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkResultOut'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Недостаточно прав
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
+      - APIKeyCookie: []
+  /api/v1/recurring-payments/bulk/restore:
+    post:
+      tags:
+      - Регулярные платежи
+      summary: Возобновление нескольких регулярных платежей
+      description: 'График продолжается с сегодняшнего дня: сроки за время прекращения
+        задним числом не создаются.'
+      operationId: bulk_restore_recurring_api_v1_recurring_payments_bulk_restore_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkIds'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkResultOut'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Недостаточно прав
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
+      - APIKeyCookie: []
+  /api/v1/recurring-payments/bulk/category:
+    post:
+      tags:
+      - Регулярные платежи
+      summary: Перенос нескольких регулярных платежей в категорию
+      description: 'category_id: null — убрать из категории. Все или ничего, как и
+        другие групповые действия.'
+      operationId: bulk_category_recurring_api_v1_recurring_payments_bulk_category_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkCategory'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkResultOut'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Недостаточно прав
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
+      - APIKeyCookie: []
+  /api/v1/recurring-payments/{payment_id}/restore:
+    post:
+      tags:
+      - Регулярные платежи
+      summary: Возобновление прекращённого регулярного платежа
+      description: 'График продолжается с сегодняшнего дня: сроки, пришедшиеся на
+        время прекращения, задним числом не создаются. Для активного платежа ничего
+        не меняется.'
+      operationId: restore_recurring_api_v1_recurring_payments__payment_id__restore_post
+      security:
+      - HTTPBearer: []
+      - APIKeyCookie: []
+      parameters:
+      - name: payment_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Payment Id
+      responses:
+        '200':
           description: Successful Response
           content:
             application/json:
@@ -527,6 +746,17 @@ paths:
           default: true
           title: Include Inactive
         description: Включать периоды прекращённых платежей
+      - name: category_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 0
+          - type: 'null'
+          description: Категория; 0 — без категории
+          title: Category Id
+        description: Категория; 0 — без категории
       - name: sort
         in: query
         required: false
@@ -698,6 +928,213 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /api/v1/payment-occurrences/{occurrence_id}/receipt-file:
+    put:
+      tags:
+      - Платежи (периоды)
+      summary: Прикрепление файла чека к оплате
+      description: 'Тело запроса — сам файл (не multipart), имя — в заголовке X-File-Name
+        (UTF-8, percent-encoding), чтобы оно не попадало в журналы запросов. Только
+        PDF, PNG, JPG, WebP: тип определяется по содержимому, расширение должно ему
+        соответствовать; PDF со скриптами, вложениями и запуском программ отклоняется.
+        Размер — не больше UPLOAD_MAX_MB (по умолчанию 10 МБ). Новый файл заменяет
+        прежний. Администратор может отключить загрузку в настройках.'
+      operationId: upload_receipt_file_api_v1_payment_occurrences__occurrence_id__receipt_file_put
+      security:
+      - HTTPBearer: []
+      - APIKeyCookie: []
+      parameters:
+      - name: occurrence_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Occurrence Id
+      - name: x-file-name
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          description: Имя файла с расширением, percent-encoded
+          title: X-File-Name
+        description: Имя файла с расширением, percent-encoded
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OccurrenceOut'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Недостаточно прав
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Файл слишком большой
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '415':
+          description: Формат не разрешён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+          application/pdf:
+            schema:
+              type: string
+              format: binary
+          image/png:
+            schema:
+              type: string
+              format: binary
+          image/jpeg:
+            schema:
+              type: string
+              format: binary
+          image/webp:
+            schema:
+              type: string
+              format: binary
+    get:
+      tags:
+      - Платежи (периоды)
+      summary: Файл чека
+      description: Открывается в браузере (inline) с запрещающей политикой CSP; тип
+        — тот, что определён при загрузке.
+      operationId: download_receipt_file_api_v1_payment_occurrences__occurrence_id__receipt_file_get
+      security:
+      - HTTPBearer: []
+      - APIKeyCookie: []
+      parameters:
+      - name: occurrence_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Occurrence Id
+      responses:
+        '200':
+          description: Файл
+          content:
+            application/pdf: {}
+            image/png: {}
+            image/jpeg: {}
+            image/webp: {}
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Недостаточно прав
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+      - Платежи (периоды)
+      summary: Удаление файла чека
+      operationId: delete_receipt_file_api_v1_payment_occurrences__occurrence_id__receipt_file_delete
+      security:
+      - HTTPBearer: []
+      - APIKeyCookie: []
+      parameters:
+      - name: occurrence_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Occurrence Id
+      responses:
+        '204':
+          description: Successful Response
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Недостаточно прав
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /api/v1/payments/summary:
     get:
       tags:
@@ -830,6 +1267,315 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /api/v1/categories:
+    get:
+      tags:
+      - Категории
+      summary: Список категорий платежей
+      operationId: list_categories_api_v1_categories_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/CategoryOut'
+                type: array
+                title: Response List Categories Api V1 Categories Get
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Недостаточно прав
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
+      - APIKeyCookie: []
+    post:
+      tags:
+      - Категории
+      summary: Создание категории
+      operationId: create_category_api_v1_categories_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryIn'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryOut'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Недостаточно прав
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
+      - APIKeyCookie: []
+  /api/v1/categories/{category_id}:
+    patch:
+      tags:
+      - Категории
+      summary: Переименование категории
+      operationId: rename_category_api_v1_categories__category_id__patch
+      security:
+      - HTTPBearer: []
+      - APIKeyCookie: []
+      parameters:
+      - name: category_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Category Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryOut'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Недостаточно прав
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+      - Категории
+      summary: Удаление категории
+      description: Платежи из категории не удаляются — они остаются без категории.
+      operationId: delete_category_api_v1_categories__category_id__delete
+      security:
+      - HTTPBearer: []
+      - APIKeyCookie: []
+      parameters:
+      - name: category_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Category Id
+      responses:
+        '204':
+          description: Successful Response
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Недостаточно прав
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/v1/settings:
+    get:
+      tags:
+      - Настройки
+      summary: Получение настроек
+      operationId: get_settings_api_v1_settings_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettingsOut'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Недостаточно прав
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
+      - APIKeyCookie: []
+    patch:
+      tags:
+      - Настройки
+      summary: 'Изменение настроек: окно напоминания, загрузка файлов чеков'
+      description: reminder_days_before — за сколько дней до срока напоминать о платежах
+        без своего окна (3–365). Если окно увеличили, напоминания о попавших в него
+        сроках уйдут при ближайшей проверке. uploads_enabled — можно ли прикреплять
+        файлы чеков (уже прикреплённые остаются доступны).
+      operationId: update_settings_api_v1_settings_patch
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettingsUpdate'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettingsOut'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Недостаточно прав
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
+      - APIKeyCookie: []
   /api/v1/users:
     get:
       tags:
@@ -1230,6 +1976,108 @@ components:
       - details
       - ip
       title: AuditOut
+    BulkCategory:
+      properties:
+        ids:
+          items:
+            type: integer
+          type: array
+          maxItems: 500
+          minItems: 1
+          title: Ids
+          description: ID регулярных платежей
+          examples:
+          - - 1
+            - 2
+            - 3
+        category_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Category Id
+          description: Категория; null — убрать из категории
+      additionalProperties: false
+      type: object
+      required:
+      - ids
+      - category_id
+      title: BulkCategory
+    BulkIds:
+      properties:
+        ids:
+          items:
+            type: integer
+          type: array
+          maxItems: 500
+          minItems: 1
+          title: Ids
+          description: ID регулярных платежей
+          examples:
+          - - 1
+            - 2
+            - 3
+      additionalProperties: false
+      type: object
+      required:
+      - ids
+      title: BulkIds
+    BulkResultOut:
+      properties:
+        changed:
+          items:
+            type: integer
+          type: array
+          title: Changed
+          description: Платежи, которые изменились этим запросом
+        unchanged:
+          items:
+            type: integer
+          type: array
+          title: Unchanged
+          description: Уже были в нужном состоянии — ничего не изменилось
+      type: object
+      required:
+      - changed
+      - unchanged
+      title: BulkResultOut
+    CategoryIn:
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          minLength: 1
+          pattern: ^[^\x00-\x1F\x7F]*$
+          title: Name
+          examples:
+          - Серверы
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      title: CategoryIn
+    CategoryOut:
+      properties:
+        id:
+          type: integer
+          title: Id
+        name:
+          type: string
+          title: Name
+        payments_count:
+          type: integer
+          title: Payments Count
+          description: Сколько активных платежей в категории
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - name
+      - payments_count
+      - created_at
+      title: CategoryOut
     Currency:
       type: string
       enum:
@@ -1453,6 +2301,14 @@ components:
         reminder_days_before:
           type: integer
           title: Reminder Days Before
+          description: Общее окно напоминания (см. GET /settings)
+        uploads_enabled:
+          type: boolean
+          title: Uploads Enabled
+          description: Можно ли прикреплять файлы чеков
+        upload_max_mb:
+          type: integer
+          title: Upload Max Mb
         currencies:
           items:
             $ref: '#/components/schemas/Currency'
@@ -1470,6 +2326,8 @@ components:
       - today
       - timezone
       - reminder_days_before
+      - uploads_enabled
+      - upload_max_mb
       - currencies
       - frequencies
       - telegram
@@ -1588,6 +2446,26 @@ components:
           - type: string
           - type: 'null'
           title: Receipt Url
+        receipt_file:
+          anyOf:
+          - $ref: '#/components/schemas/ReceiptFileOut'
+          - type: 'null'
+          description: Прикреплённый файл чека
+        comment:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Comment
+        category_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Category Id
+        category_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Category Name
         payment_active:
           type: boolean
           title: Payment Active
@@ -1619,6 +2497,10 @@ components:
       - state
       - reminder_sent_at
       - receipt_url
+      - receipt_file
+      - comment
+      - category_id
+      - category_name
       - payment_active
       - created_at
       - updated_at
@@ -1656,6 +2538,16 @@ components:
           - type: 'null'
           title: Receipt Url
           description: Ссылка на чек или платёжку (только http/https)
+        comment:
+          anyOf:
+          - type: string
+            maxLength: 1000
+            pattern: ^[^\x00-\x08\x0B\x0C\x0E-\x1F\x7F]*$
+            examples:
+            - Оплачено с карты офиса
+          - type: 'null'
+          title: Comment
+          description: Комментарий к оплате; пустая строка или null — убрать
       additionalProperties: false
       type: object
       title: OccurrenceUpdate
@@ -1732,6 +2624,51 @@ components:
       - user_id
       - label
       title: PayerOut
+    ReceiptFileOut:
+      properties:
+        filename:
+          type: string
+          title: Filename
+        content_type:
+          type: string
+          enum:
+          - application/pdf
+          - image/png
+          - image/jpeg
+          - image/webp
+          title: Content Type
+        size:
+          type: integer
+          title: Size
+          description: Размер в байтах
+        sha256:
+          type: string
+          title: Sha256
+          description: Отпечаток содержимого — по нему журнал понимает, тот ли это
+            файл
+        uploaded_at:
+          type: string
+          format: date-time
+          title: Uploaded At
+        uploaded_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Uploaded By
+        url:
+          type: string
+          title: Url
+          description: 'Открыть файл: GET с той же авторизацией'
+      type: object
+      required:
+      - filename
+      - content_type
+      - size
+      - sha256
+      - uploaded_at
+      - uploaded_by
+      - url
+      title: ReceiptFileOut
     RecurringPaymentCreate:
       properties:
         name:
@@ -1763,6 +2700,24 @@ components:
         frequency:
           $ref: '#/components/schemas/Frequency'
           default: monthly
+        remind_days:
+          anyOf:
+          - type: integer
+            maximum: 365.0
+            minimum: 3.0
+            description: За сколько дней до срока напоминать (от 3 до 365)
+            examples:
+            - 3
+          - type: 'null'
+          title: Remind Days
+          description: Своё окно напоминания в днях; не задано — общая настройка (GET
+            /settings)
+        category_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Category Id
+          description: Категория (GET /categories); не задано — без категории
       additionalProperties: false
       type: object
       required:
@@ -1809,6 +2764,26 @@ components:
         overdue_count:
           type: integer
           title: Overdue Count
+        remind_days:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Remind Days
+          description: Своё окно напоминания в днях; null — действует общая настройка
+        remind_days_effective:
+          type: integer
+          title: Remind Days Effective
+          description: За сколько дней до срока придёт напоминание по этому платежу
+        category_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Category Id
+        category_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Category Name
         is_active:
           type: boolean
           title: Is Active
@@ -1818,6 +2793,14 @@ components:
             format: date-time
           - type: 'null'
           title: Deleted At
+          description: Когда платёж прекращён; null — активен
+        resumed_on:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Resumed On
+          description: Когда платёж возобновили после прекращения
         created_at:
           type: string
           format: date-time
@@ -1837,8 +2820,13 @@ components:
       - next_due_date
       - next_occurrence
       - overdue_count
+      - remind_days
+      - remind_days_effective
+      - category_id
+      - category_name
       - is_active
       - deleted_at
+      - resumed_on
       - created_at
       - updated_at
       title: RecurringPaymentOut
@@ -1882,9 +2870,73 @@ components:
           anyOf:
           - $ref: '#/components/schemas/Frequency'
           - type: 'null'
+        remind_days:
+          anyOf:
+          - type: integer
+            maximum: 365.0
+            minimum: 3.0
+            description: За сколько дней до срока напоминать (от 3 до 365)
+            examples:
+            - 3
+          - type: 'null'
+          title: Remind Days
+          description: Своё окно напоминания; null — общая настройка
+        category_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Category Id
+          description: Категория; null — без категории. Её можно менять и у прекращённого
+            платежа
       additionalProperties: false
       type: object
       title: RecurringPaymentUpdate
+    SettingsOut:
+      properties:
+        reminder_days_before:
+          type: integer
+          title: Reminder Days Before
+          description: За сколько дней до срока напоминать — для платежей, у которых
+            не задано своё окно
+        reminder_days_default:
+          type: integer
+          title: Reminder Days Default
+          description: Значение по умолчанию из .env (REMINDER_DAYS_BEFORE)
+        uploads_enabled:
+          type: boolean
+          title: Uploads Enabled
+          description: Можно ли прикреплять файлы чеков
+        upload_max_mb:
+          type: integer
+          title: Upload Max Mb
+          description: Предельный размер файла чека, МБ (UPLOAD_MAX_MB в .env)
+      type: object
+      required:
+      - reminder_days_before
+      - reminder_days_default
+      - uploads_enabled
+      - upload_max_mb
+      title: SettingsOut
+    SettingsUpdate:
+      properties:
+        reminder_days_before:
+          anyOf:
+          - type: integer
+            maximum: 365.0
+            minimum: 3.0
+            description: За сколько дней до срока напоминать (от 3 до 365)
+            examples:
+            - 3
+          - type: 'null'
+          title: Reminder Days Before
+        uploads_enabled:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Uploads Enabled
+      additionalProperties: false
+      type: object
+      title: SettingsUpdate
     SortOrder:
       type: string
       enum:

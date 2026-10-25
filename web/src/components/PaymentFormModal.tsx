@@ -1,25 +1,28 @@
-import { Alert, Button, Group, Modal, NumberInput, SegmentedControl, Select, Stack, Text, TextInput } from "@mantine/core";
+import { Alert, Button, Collapse, Group, Modal, NumberInput, SegmentedControl, Select, Stack, Text, TextInput } from "@mantine/core";
 import { DatePickerInput } from "@mantine/dates";
 import { IconBrandTelegram, IconCalendar, IconInfoCircle } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { useEffect, useState } from "react";
 import type { Currency, Frequency, RecurringPayment, Schemas } from "../api/client";
-import { useCreateRecurring, useMeta, useUpdateRecurring } from "../api/hooks";
-import { CURRENCIES, FREQUENCY_LABEL, formatDate, pluralDays } from "../lib/format";
+import { useCategories, useCreateRecurring, useMeta, useUpdateRecurring } from "../api/hooks";
+import { CURRENCIES, FREQUENCY_LABEL, REMIND_MAX, REMIND_MIN, formatDate, pluralDays } from "../lib/format";
 import { notifyError, notifySuccess } from "./common";
 
 type Props = {
   opened: boolean;
   payment: RecurringPayment | null; // null — создание
   onClose: () => void;
+  /** Дата первого срока для нового платежа (например, день, выбранный в календаре). */
+  initialDate?: string | null;
 };
 
 const CURRENCY_SYMBOL: Record<Currency, string> = { RUB: "₽", USD: "$", EUR: "€" };
 
-export function PaymentFormModal({ opened, payment, onClose }: Props) {
+export function PaymentFormModal({ opened, payment, onClose, initialDate }: Props) {
   const meta = useMeta();
   const today = meta.data?.today ?? dayjs().format("YYYY-MM-DD");
-  const remindDays = meta.data?.reminder_days_before ?? 3;
+  const globalDays = meta.data?.reminder_days_before ?? 3;
+  const categories = useCategories();
   const create = useCreateRecurring();
   const update = useUpdateRecurring();
 
@@ -29,6 +32,9 @@ export function PaymentFormModal({ opened, payment, onClose }: Props) {
   const [dueDate, setDueDate] = useState<string | null>(null);
   const [frequency, setFrequency] = useState<Frequency>("monthly");
   const [touched, setTouched] = useState(false);
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [ownRemind, setOwnRemind] = useState(false);
+  const [remindInput, setRemindInput] = useState<number | string>("");
 
   useEffect(() => {
     if (!opened) return;
@@ -39,20 +45,32 @@ export function PaymentFormModal({ opened, payment, onClose }: Props) {
       setCurrency(payment.currency);
       setDueDate(payment.next_due_date ?? today);
       setFrequency(payment.frequency);
+      setCategoryId(payment.category_id !== null ? String(payment.category_id) : null);
+      setOwnRemind(payment.remind_days !== null);
+      setRemindInput(payment.remind_days ?? globalDays);
     } else {
       setName("");
       setAmount("");
       setCurrency("RUB");
-      setDueDate(today);
+      setDueDate(initialDate ?? today);
       setFrequency("monthly");
+      setCategoryId(null);
+      setOwnRemind(false);
+      setRemindInput(globalDays);
     }
-  }, [opened, payment, today]);
+    // globalDays не в зависимостях: иначе фоновое обновление настроек сбросило бы введённое
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opened, payment, today, initialDate]);
 
   const amountNumber = typeof amount === "number" ? amount : Number(String(amount).replace(",", "."));
+  const remindNumber = typeof remindInput === "number" ? remindInput : Number(remindInput);
+  const ownRemindDays = ownRemind ? remindNumber : null;
+  const remindDays = ownRemindDays ?? globalDays;
   const errors = {
     name: !name.trim() ? "Укажите название" : null,
     amount: !amountNumber || amountNumber <= 0 ? "Сумма должна быть больше нуля" : null,
     dueDate: !dueDate ? "Укажите дату" : payment && dueDate < today ? "Дата не может быть в прошлом" : null,
+    remind: ownRemind && !(Number.isInteger(remindNumber) && remindNumber >= REMIND_MIN && remindNumber <= REMIND_MAX) ? `От ${REMIND_MIN} до ${REMIND_MAX} дней` : null,
   };
   const hasErrors = Object.values(errors).some(Boolean);
   const daysLeft = dueDate ? dayjs(dueDate).diff(dayjs(today), "day") : null;
@@ -69,6 +87,9 @@ export function PaymentFormModal({ opened, payment, onClose }: Props) {
         if (currency !== payment.currency) body.currency = currency;
         if (dueDate !== payment.next_due_date) body.next_due_date = dueDate;
         if (frequency !== payment.frequency) body.frequency = frequency;
+        if (ownRemindDays !== payment.remind_days) body.remind_days = ownRemindDays;
+        const nextCategory = categoryId ? Number(categoryId) : null;
+        if (nextCategory !== payment.category_id) body.category_id = nextCategory;
         if (Object.keys(body).length === 0) {
           onClose();
           return;
@@ -76,7 +97,15 @@ export function PaymentFormModal({ opened, payment, onClose }: Props) {
         await update.mutateAsync({ id: payment.id, body });
         notifySuccess(`Платёж «${name.trim()}» обновлён`);
       } else {
-        await create.mutateAsync({ name: name.trim(), amount: amountValue, currency, next_due_date: dueDate, frequency });
+        await create.mutateAsync({
+          name: name.trim(),
+          amount: amountValue,
+          currency,
+          next_due_date: dueDate,
+          frequency,
+          ...(ownRemindDays !== null ? { remind_days: ownRemindDays } : {}),
+          ...(categoryId ? { category_id: Number(categoryId) } : {}),
+        });
         const telegramOn = meta.data?.telegram.chat_configured;
         const remindOn = dayjs(dueDate).subtract(remindDays, "day").format("YYYY-MM-DD");
         notifySuccess(
@@ -151,8 +180,56 @@ export function PaymentFormModal({ opened, payment, onClose }: Props) {
           />
         </Group>
 
+        {(categories.data ?? []).length > 0 && (
+          <Select
+            label="Категория"
+            placeholder="Без категории"
+            data={(categories.data ?? []).map((c) => ({ value: String(c.id), label: c.name }))}
+            value={categoryId}
+            onChange={setCategoryId}
+            clearable
+            searchable
+            nothingFoundMessage="Нет такой категории"
+          />
+        )}
+
+        <div>
+          <Text size="sm" fw={500} mb={4}>
+            Напоминание в Telegram
+          </Text>
+          <SegmentedControl
+            fullWidth
+            value={ownRemind ? "own" : "global"}
+            onChange={(v) => setOwnRemind(v === "own")}
+            data={[
+              { value: "global", label: `Как в настройках · ${pluralDays(globalDays)}` },
+              { value: "own", label: "Свой срок" },
+            ]}
+          />
+          <Collapse expanded={ownRemind} transitionDuration={260}>
+            <Group gap="sm" mt="sm" align="flex-start" wrap="nowrap">
+              <NumberInput
+                aria-label="За сколько дней до срока напоминать"
+                value={remindInput}
+                onChange={setRemindInput}
+                min={REMIND_MIN}
+                max={REMIND_MAX}
+                allowDecimal={false}
+                allowNegative={false}
+                w={110}
+                rightSection={<Text size="sm" c="dimmed">дн.</Text>}
+                rightSectionWidth={40}
+                error={touched && errors.remind}
+              />
+              <Text size="sm" c="dimmed" mt={8}>
+                до срока — только для этого платежа
+              </Text>
+            </Group>
+          </Collapse>
+        </div>
+
         {daysLeft !== null && daysLeft < 0 && !payment && (
-          <Alert color="orange" icon={<IconInfoCircle size={16} />} p="xs">
+          <Alert color="yellow" icon={<IconInfoCircle size={16} />} p="xs">
             Дата в прошлом: все сроки до сегодняшнего дня появятся как просроченные (их можно сразу отметить оплаченными).
           </Alert>
         )}

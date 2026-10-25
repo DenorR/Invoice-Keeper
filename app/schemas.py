@@ -18,6 +18,7 @@ from pydantic import (
 )
 
 from app.domain.money import Currency, from_minor
+from app.domain import reminders
 from app.domain.occurrence_state import OccurrenceState, compute_state
 from app.domain.schedule import Frequency
 from app.models import AuditLog, PaymentOccurrence, RecurringPayment, User
@@ -36,6 +37,15 @@ PaymentName = Annotated[
     str, Field(min_length=1, max_length=200, pattern=NO_CONTROL_CHARS, examples=["Аренда офиса"])
 ]
 PersonName = Annotated[str, Field(max_length=128, pattern=NO_CONTROL_CHARS, examples=["Иван Петров"])]
+CategoryName = Annotated[
+    str, Field(min_length=1, max_length=100, pattern=NO_CONTROL_CHARS, examples=["Серверы"])
+]
+# Комментарий может быть в несколько строк — переводы строк и табуляция разрешены, прочие управляющие символы нет
+Comment = Annotated[
+    str, Field(max_length=1000, pattern=r"^[^\x00-\x08\x0B\x0C\x0E-\x1F\x7F]*$", examples=["Оплачено с карты офиса"])
+]
+RemindDays = Annotated[int, Field(ge=reminders.MIN_DAYS, le=reminders.MAX_DAYS, examples=[3],
+                                  description="За сколько дней до срока напоминать (от 3 до 365)")]
 
 
 class StrictModel(BaseModel):
@@ -128,6 +138,16 @@ class OccurrenceBrief(BaseModel):
     reminder_sent_at: datetime | None
 
 
+class ReceiptFileOut(BaseModel):
+    filename: str
+    content_type: Literal["application/pdf", "image/png", "image/jpeg", "image/webp"]
+    size: int = Field(description="Размер в байтах")
+    sha256: str = Field(description="Отпечаток содержимого — по нему журнал понимает, тот ли это файл")
+    uploaded_at: datetime
+    uploaded_by: str | None
+    url: str = Field(description="Открыть файл: GET с той же авторизацией")
+
+
 class OccurrenceOut(BaseModel):
     id: int
     recurring_payment_id: int
@@ -146,14 +166,18 @@ class OccurrenceOut(BaseModel):
     state: OccurrenceState
     reminder_sent_at: datetime | None
     receipt_url: str | None
+    receipt_file: ReceiptFileOut | None = Field(description="Прикреплённый файл чека")
+    comment: str | None
+    category_id: int | None
+    category_name: str | None
     payment_active: bool = Field(description="false — регулярный платёж прекращён (период остаётся в истории)")
     created_at: datetime
     updated_at: datetime
 
     @classmethod
     def build(cls, occ: PaymentOccurrence, today: date, remind_days: int) -> OccurrenceOut:
-        info = compute_state(occ.due_date, occ.paid_at, today, remind_days)
         payment = occ.recurring_payment
+        info = compute_state(occ.due_date, occ.paid_at, today, payment.remind_days_or(remind_days))
         return cls(
             id=occ.id,
             recurring_payment_id=occ.recurring_payment_id,
@@ -172,6 +196,15 @@ class OccurrenceOut(BaseModel):
             state=info.state,
             reminder_sent_at=occ.reminder_sent_at,
             receipt_url=occ.receipt_url,
+            receipt_file=ReceiptFileOut(
+                filename=occ.receipt_file.filename, content_type=occ.receipt_file.content_type,
+                size=occ.receipt_file.size, sha256=occ.receipt_file.sha256, uploaded_at=occ.receipt_file.created_at,
+                uploaded_by=occ.receipt_file.uploaded_by_label,
+                url=f"/api/v1/payment-occurrences/{occ.id}/receipt-file",
+            ) if occ.receipt_file else None,
+            comment=occ.comment,
+            category_id=payment.category_id,
+            category_name=payment.category.name if payment.category else None,
             payment_active=payment.is_active,
             created_at=occ.created_at,
             updated_at=occ.updated_at,
@@ -191,6 +224,7 @@ class OccurrenceUpdate(StrictModel):
     receipt_url: Annotated[HttpUrl, UrlConstraints(max_length=2048)] | None = Field(
         default=None, description="Ссылка на чек или платёжку (только http/https)"
     )
+    comment: Comment | None = Field(default=None, description="Комментарий к оплате; пустая строка или null — убрать")
 
 
 # --- регулярные платежи ---------------------------------------------------
@@ -202,6 +236,10 @@ class RecurringPaymentCreate(StrictModel):
     currency: Currency
     next_due_date: date = Field(description="Дата ближайшей оплаты — от неё строится график")
     frequency: Frequency = Frequency.MONTHLY
+    remind_days: RemindDays | None = Field(
+        default=None, description="Своё окно напоминания в днях; не задано — общая настройка (GET /settings)"
+    )
+    category_id: int | None = Field(default=None, description="Категория (GET /categories); не задано — без категории")
 
 
 class RecurringPaymentUpdate(StrictModel):
@@ -210,10 +248,14 @@ class RecurringPaymentUpdate(StrictModel):
     currency: Currency | None = None
     next_due_date: date | None = Field(default=None, description="Новая дата ближайшей оплаты (не в прошлом)")
     frequency: Frequency | None = None
+    remind_days: RemindDays | None = Field(default=None, description="Своё окно напоминания; null — общая настройка")
+    category_id: int | None = Field(
+        default=None, description="Категория; null — без категории. Её можно менять и у прекращённого платежа"
+    )
 
     @model_validator(mode="after")
     def _not_null(self) -> RecurringPaymentUpdate:
-        for name in self.model_fields_set:
+        for name in self.model_fields_set - {"remind_days", "category_id"}:
             if getattr(self, name) is None:
                 raise ValueError(f"поле {name} не может быть null")
         return self
@@ -229,14 +271,20 @@ class RecurringPaymentOut(BaseModel):
     next_due_date: date | None = Field(description="Ближайший неоплаченный срок начиная с сегодня")
     next_occurrence: OccurrenceBrief | None = Field(description="Самый ранний неоплаченный период (может быть просрочен)")
     overdue_count: int
+    remind_days: int | None = Field(description="Своё окно напоминания в днях; null — действует общая настройка")
+    remind_days_effective: int = Field(description="За сколько дней до срока придёт напоминание по этому платежу")
+    category_id: int | None
+    category_name: str | None
     is_active: bool
-    deleted_at: datetime | None
+    deleted_at: datetime | None = Field(description="Когда платёж прекращён; null — активен")
+    resumed_on: date | None = Field(description="Когда платёж возобновили после прекращения")
     created_at: datetime
     updated_at: datetime
 
     @classmethod
     def build(cls, payment: RecurringPayment, next_due_date: date | None, next_occurrence: PaymentOccurrence | None,
               overdue_count: int, today: date, remind_days: int) -> RecurringPaymentOut:
+        remind_days = payment.remind_days_or(remind_days)
         brief = None
         if next_occurrence is not None:
             info = compute_state(next_occurrence.due_date, None, today, remind_days)
@@ -247,9 +295,44 @@ class RecurringPaymentOut(BaseModel):
         return cls(
             id=payment.id, name=payment.name, amount=from_minor(payment.amount_minor), currency=payment.currency,
             frequency=payment.frequency, anchor_date=payment.anchor_date, next_due_date=next_due_date,
-            next_occurrence=brief, overdue_count=overdue_count, is_active=payment.is_active,
-            deleted_at=payment.deleted_at, created_at=payment.created_at, updated_at=payment.updated_at,
+            next_occurrence=brief, overdue_count=overdue_count, remind_days=payment.remind_days,
+            remind_days_effective=remind_days, category_id=payment.category_id,
+            category_name=payment.category.name if payment.category else None,
+            is_active=payment.is_active, deleted_at=payment.deleted_at,
+            resumed_on=payment.resumed_on, created_at=payment.created_at, updated_at=payment.updated_at,
         )
+
+
+class BulkIds(StrictModel):
+    ids: list[int] = Field(min_length=1, max_length=500, examples=[[1, 2, 3]], description="ID регулярных платежей")
+
+    @field_validator("ids")
+    @classmethod
+    def _unique(cls, value: list[int]) -> list[int]:
+        return list(dict.fromkeys(value))
+
+
+class BulkCategory(BulkIds):
+    category_id: int | None = Field(description="Категория; null — убрать из категории")
+
+
+class BulkResultOut(BaseModel):
+    changed: list[int] = Field(description="Платежи, которые изменились этим запросом")
+    unchanged: list[int] = Field(description="Уже были в нужном состоянии — ничего не изменилось")
+
+
+# --- категории -----------------------------------------------------------
+
+
+class CategoryOut(BaseModel):
+    id: int
+    name: str
+    payments_count: int = Field(description="Сколько активных платежей в категории")
+    created_at: datetime
+
+
+class CategoryIn(StrictModel):
+    name: CategoryName
 
 
 # --- итоги -----------------------------------------------------------------
@@ -329,10 +412,32 @@ class TelegramStatus(BaseModel):
     bot_username: str | None = Field(description="Имя бота, если он подключился к Telegram")
 
 
+class SettingsOut(BaseModel):
+    reminder_days_before: int = Field(
+        description="За сколько дней до срока напоминать — для платежей, у которых не задано своё окно"
+    )
+    reminder_days_default: int = Field(description="Значение по умолчанию из .env (REMINDER_DAYS_BEFORE)")
+    uploads_enabled: bool = Field(description="Можно ли прикреплять файлы чеков")
+    upload_max_mb: int = Field(description="Предельный размер файла чека, МБ (UPLOAD_MAX_MB в .env)")
+
+
+class SettingsUpdate(StrictModel):
+    reminder_days_before: RemindDays | None = None
+    uploads_enabled: bool | None = None
+
+    @model_validator(mode="after")
+    def _something(self) -> SettingsUpdate:
+        if not self.model_fields_set or any(getattr(self, n) is None for n in self.model_fields_set):
+            raise ValueError("передайте reminder_days_before и/или uploads_enabled (не null)")
+        return self
+
+
 class MetaOut(BaseModel):
     today: date = Field(description="Сегодняшняя дата в часовом поясе приложения")
     timezone: str
-    reminder_days_before: int
+    reminder_days_before: int = Field(description="Общее окно напоминания (см. GET /settings)")
+    uploads_enabled: bool = Field(description="Можно ли прикреплять файлы чеков")
+    upload_max_mb: int
     currencies: list[Currency]
     frequencies: list[Frequency]
     telegram: TelegramStatus

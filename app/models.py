@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -17,6 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base, UTCDateTime
+from app.domain.reminders import clamp_days
 
 
 def utcnow() -> datetime:
@@ -55,6 +57,16 @@ class AuthSession(Base):
     user: Mapped[User] = relationship(lazy="joined")
 
 
+class Category(Base):
+    """Категория (группа) регулярных платежей: «Офис», «Серверы», «Подписки»…"""
+
+    __tablename__ = "categories"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
 class RecurringPayment(Base):
     __tablename__ = "recurring_payments"
     __table_args__ = (
@@ -75,10 +87,21 @@ class RecurringPayment(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
     deleted_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    # За сколько дней до срока напоминать именно об этом платеже; None — общая настройка
+    remind_days: Mapped[int | None] = mapped_column(Integer)
+    # Когда платёж возобновили после прекращения: сроки по графику раньше этой даты не создаются
+    resumed_on: Mapped[date | None] = mapped_column(Date)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
+
+    category: Mapped[Category | None] = relationship(lazy="joined")
 
     @property
     def is_active(self) -> bool:
         return self.deleted_at is None
+
+    def remind_days_or(self, default: int) -> int:
+        """Окно напоминания платежа: своё, если задано, иначе общее."""
+        return clamp_days(self.remind_days) if self.remind_days is not None else default
 
 
 class PaymentOccurrence(Base):
@@ -106,11 +129,48 @@ class PaymentOccurrence(Base):
     receipt_url: Mapped[str | None] = mapped_column(Text)
     reminder_sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     reminder_message_id: Mapped[int | None] = mapped_column(BigInteger)
+    comment: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
 
     recurring_payment: Mapped[RecurringPayment] = relationship(lazy="joined")
     payer: Mapped[User | None] = relationship(lazy="joined")
+    receipt_file: Mapped[ReceiptFile | None] = relationship(
+        lazy="joined", back_populates="occurrence", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class ReceiptFile(Base):
+    """Файл чека к оплате. Хранится в самой базе: попадает в резервные копии и переносится вместе с ней,
+    а на диске сервера нет пользовательских файлов, которые можно было бы запустить или подменить."""
+
+    __tablename__ = "receipt_files"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    occurrence_id: Mapped[int] = mapped_column(
+        ForeignKey("payment_occurrences.id", ondelete="CASCADE"), unique=True
+    )
+    filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(64))
+    size: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    # содержимое читается только при скачивании, в списках платежей не загружается
+    data: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
+    uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    uploaded_by_label: Mapped[str | None] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+    occurrence: Mapped[PaymentOccurrence] = relationship(back_populates="receipt_file")
+
+
+class AppSetting(Base):
+    """Настройки, которые администратор меняет в панели. Если записи нет — действует значение из .env."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[int | str | None] = mapped_column(JSON)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
 
 
 class AuditLog(Base):

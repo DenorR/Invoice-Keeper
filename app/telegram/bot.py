@@ -30,10 +30,11 @@ from app.config import Settings
 from app.domain.dates import Clock
 from app.domain.money import format_amount
 from app.models import PaymentOccurrence, RecurringPayment
+from app.services import app_settings
 from app.services.audit import Actor
 from app.services.occurrences import generate_for_payment, set_paid
 from app.services.reminders import Reminder, ReminderService, load_reminder_by_message
-from app.telegram.messages import WEEKDAYS, fmt_date, relative_due, render_reminder
+from app.telegram.messages import WEEKDAYS, fmt_date, plural_days, relative_due, render_reminder
 
 log = logging.getLogger(__name__)
 
@@ -117,6 +118,10 @@ def build_router(
 ) -> Router:
     router = Router(name="invoice-keeper")
 
+    def remind_days() -> int:
+        with session_factory() as db:
+            return app_settings.reminder_days(db, settings.reminder_days_before)
+
     def is_configured_chat(chat_id: int) -> bool:
         return settings.telegram_chat_id is not None and str(chat_id) == str(settings.telegram_chat_id)
 
@@ -137,7 +142,8 @@ def build_router(
             "👋 Я <b>Invoice Keeper</b> — слежу, чтобы вы не забывали о регулярных платежах: "
             "аренде, серверах, подписках.",
             "",
-            f"🔔 За {settings.reminder_days_before} дня до срока пишу в чат: что, сколько и когда оплатить.",
+            f"🔔 За {plural_days(remind_days())} до срока пишу в чат: что, сколько и когда оплатить "
+            "(для отдельных платежей срок может быть свой).",
             "✅ Оплатили — нажмите «Оплачено» под напоминанием, и я отмечу оплату.",
             "⚠️ Если срок прошёл, а оплаты нет — платёж станет просроченным.",
             "",
@@ -239,7 +245,8 @@ def build_router(
             else:
                 set_paid(db, occurrence, today, today=today, now=now,
                          actor=Actor(user_id=None, label=_actor_label(callback)), via="telegram")
-                generate_for_payment(db, occurrence.recurring_payment, today, settings.reminder_days_before)
+                generate_for_payment(db, occurrence.recurring_payment, today,
+                                     app_settings.reminder_days(db, settings.reminder_days_before))
                 db.commit()
                 answer = f"✅ Оплата отмечена: {fmt_date(today)}"
             reminder = load_reminder_by_message(db, message.message_id, today)

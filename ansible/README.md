@@ -129,7 +129,8 @@ invoice_keeper:
 | `ik_telegram_bot_token` | — | токен бота. **У каждого сервера свой бот** |
 | `ik_telegram_chat_id` | — | ID чата. Можно сначала раскатить с одним токеном: бот запустится и ответит на `/chatid` в группе, затем впишите ID и запустите плейбук ещё раз |
 | `ik_telegram_proxy` | — | прокси для Telegram: `socks5://…` или `http://…` |
-| `ik_reminder_days_before` | `3` | за сколько дней напоминать (не меньше 3) |
+| `ik_upload_max_mb` | `10` | предельный размер файла чека, МБ (1–50) |
+| `ik_reminder_days_before` | `3` | за сколько дней напоминать по умолчанию (3–365); потом меняется в панели, раздел «Настройки» |
 | `ik_seed_demo_data` | `false` | загрузить демо-данные в пустую базу |
 | `ik_demo_user_password`, `ik_demo_accountant_password` | — | пароли демо-пользователей, обязательны при `ik_seed_demo_data: true` |
 | `ik_env_extra` | `{}` | любые другие строки `.env`: `{ LOG_LEVEL: DEBUG }` |

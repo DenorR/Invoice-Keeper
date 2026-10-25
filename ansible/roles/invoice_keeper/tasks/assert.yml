@@ -17,8 +17,10 @@
       msg: "ik_domain: для https нужен домен (свой или IP.sslip.io)"
     - ok: "{{ not (ik_seed_demo_data | bool) or ((ik_demo_user_password | length) >= 6 and (ik_demo_accountant_password | length) >= 6) }}"
       msg: "ik_demo_user_password / ik_demo_accountant_password: при ik_seed_demo_data: true задайте оба, от 6 символов"
-    - ok: "{{ (ik_reminder_days_before | int) >= 3 }}"
-      msg: "ik_reminder_days_before: не меньше 3 (требование кейса)"
+    - ok: "{{ 3 <= (ik_reminder_days_before | int) <= 365 }}"
+      msg: "ik_reminder_days_before: от 3 до 365 (кейс требует напоминать не позже чем за 3 дня)"
+    - ok: "{{ 1 <= (ik_upload_max_mb | int) <= 50 }}"
+      msg: "ik_upload_max_mb: от 1 до 50"
     - ok: >-
         {{ [ik_admin_password, ik_demo_user_password, ik_demo_accountant_password, ik_telegram_bot_token, ik_telegram_proxy]
            | select('search', "['\n]") | list | length == 0 }}

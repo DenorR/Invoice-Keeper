@@ -27,6 +27,32 @@ export function formatMoney(amount: string | number, currency: Currency): string
   return formatter.format(Number(amount));
 }
 
+const compactFormatters = {
+  cents: new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+  whole: new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }),
+  short: new Intl.NumberFormat("ru-RU", { notation: "compact", maximumFractionDigits: 1 }),
+  shortWhole: new Intl.NumberFormat("ru-RU", { notation: "compact", maximumFractionDigits: 0 }),
+};
+
+/**
+ * Число для тесной ячейки (валюта подписана рядом): «49,90», «15», «9 999», «85» + «тыс.», «977» + «млн».
+ * Не длиннее пяти знаков, поэтому столбцы одинаковой ширины не переполняются; точная сумма — в подсказке.
+ */
+export function formatCompact(amount: string | number): { value: string; unit: string } {
+  const value = Number(amount);
+  const abs = Math.abs(value);
+  if (abs < 1_000) return { value: (Number.isInteger(value) ? compactFormatters.whole : compactFormatters.cents).format(value), unit: "" };
+  if (abs < 10_000) return { value: compactFormatters.whole.format(value), unit: "" };
+  // «133,6 млн» → «134 млн»: дробь оставляем, только пока в целой части меньше трёх знаков
+  const parts = compactFormatters.short.formatToParts(value);
+  const integer = parts.filter((p) => p.type === "integer").map((p) => p.value).join("");
+  const chosen = integer.length >= 3 ? compactFormatters.shortWhole.formatToParts(value) : parts;
+  return {
+    value: chosen.filter((p) => p.type !== "compact" && p.type !== "literal").map((p) => p.value).join(""),
+    unit: chosen.find((p) => p.type === "compact")?.value ?? "",
+  };
+}
+
 export function formatDate(value: string | null | undefined): string {
   return value ? dayjs(value).format("DD.MM.YYYY") : "—";
 }
@@ -34,6 +60,23 @@ export function formatDate(value: string | null | undefined): string {
 export function formatDateTime(value: string | null | undefined): string {
   return value ? dayjs(value).format("DD.MM.YYYY HH:mm") : "—";
 }
+
+/** Расширение файла для ярлыка: «PDF», «JPG», «PNG», «WEBP». */
+export function fileExt(filename: string, contentType?: string): string {
+  const ext = filename.includes(".") ? filename.split(".").pop()!.toUpperCase() : "";
+  if (ext === "JPEG") return "JPG";
+  return ext || (contentType?.split("/")[1] ?? "файл").toUpperCase();
+}
+
+/** Размер файла: «812 КБ», «2,4 МБ». */
+export function formatBytes(size: number): string {
+  if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} КБ`;
+  return `${(size / 1024 / 1024).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} МБ`;
+}
+
+/** Окно напоминания: меньше 3 дней нельзя (так требует кейс), больше года — бессмысленно. */
+export const REMIND_MIN = 3;
+export const REMIND_MAX = 365;
 
 export function pluralDays(n: number): string {
   const abs = Math.abs(n);
@@ -56,7 +99,7 @@ export function stateView(
     case "overdue":
       return { color: "red", variant: "filled", label: `Просрочено ${pluralDays(o.overdue_days)}` };
     case "due_today":
-      return { color: "orange", variant: "filled", label: "Срок сегодня" };
+      return { color: "yellow", variant: "filled", label: "Срок сегодня" };
     case "due_soon":
       return { color: "yellow", variant: "filled", label: o.days_until_due === 1 ? "Завтра" : `Через ${pluralDays(o.days_until_due ?? 0)}` };
     case "upcoming":
@@ -64,7 +107,7 @@ export function stateView(
     case "paid_on_time":
       return { color: "green", variant: "light", label: "Оплачено вовремя" };
     case "paid_late":
-      return { color: "orange", variant: "light", label: `Оплачено с опозданием ${pluralDays(o.overdue_days)}` };
+      return { color: "yellow", variant: "light", label: `Оплачено с опозданием ${pluralDays(o.overdue_days)}` };
   }
 }
 

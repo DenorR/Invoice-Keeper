@@ -32,6 +32,7 @@ ik_timezone: Europe/Moscow
 ik_session_ttl_hours: 168
 ik_reminder_days_before: 3
 ik_reminder_check_interval_seconds: 60
+ik_upload_max_mb: 10            # предельный размер файла чека, МБ (1–50)
 ik_log_level: INFO
 
 # ─── Telegram (у каждого экземпляра — свой бот: один токен нельзя запускать в двух местах) ───

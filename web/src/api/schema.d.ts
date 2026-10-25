@@ -84,9 +84,89 @@ export interface paths {
         put?: never;
         /**
          * Создание регулярного платежа
-         * @description Если до срока меньше дней, чем окно напоминания, напоминание уходит сразу.
+         * @description Если до срока меньше дней, чем окно напоминания, напоминание уходит сразу. remind_days — своё окно для этого платежа; не задано — действует общая настройка.
          */
         post: operations["create_recurring_api_v1_recurring_payments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recurring-payments/bulk/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Прекращение нескольких регулярных платежей
+         * @description Все или ничего: если хотя бы одного платежа нет, ничего не меняется (404 со списком missing_ids).
+         */
+        post: operations["bulk_stop_recurring_api_v1_recurring_payments_bulk_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recurring-payments/bulk/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Возобновление нескольких регулярных платежей
+         * @description График продолжается с сегодняшнего дня: сроки за время прекращения задним числом не создаются.
+         */
+        post: operations["bulk_restore_recurring_api_v1_recurring_payments_bulk_restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recurring-payments/bulk/category": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Перенос нескольких регулярных платежей в категорию
+         * @description category_id: null — убрать из категории. Все или ничего, как и другие групповые действия.
+         */
+        post: operations["bulk_category_recurring_api_v1_recurring_payments_bulk_category_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recurring-payments/{payment_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Возобновление прекращённого регулярного платежа
+         * @description График продолжается с сегодняшнего дня: сроки, пришедшиеся на время прекращения, задним числом не создаются. Для активного платежа ничего не меняется.
+         */
+        post: operations["restore_recurring_api_v1_recurring_payments__payment_id__restore_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -150,6 +230,31 @@ export interface paths {
         patch: operations["update_occurrence_api_v1_payment_occurrences__occurrence_id__patch"];
         trace?: never;
     };
+    "/api/v1/payment-occurrences/{occurrence_id}/receipt-file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Файл чека
+         * @description Открывается в браузере (inline) с запрещающей политикой CSP; тип — тот, что определён при загрузке.
+         */
+        get: operations["download_receipt_file_api_v1_payment_occurrences__occurrence_id__receipt_file_get"];
+        /**
+         * Прикрепление файла чека к оплате
+         * @description Тело запроса — сам файл (не multipart), имя — в заголовке X-File-Name (UTF-8, percent-encoding), чтобы оно не попадало в журналы запросов. Только PDF, PNG, JPG, WebP: тип определяется по содержимому, расширение должно ему соответствовать; PDF со скриптами, вложениями и запуском программ отклоняется. Размер — не больше UPLOAD_MAX_MB (по умолчанию 10 МБ). Новый файл заменяет прежний. Администратор может отключить загрузку в настройках.
+         */
+        put: operations["upload_receipt_file_api_v1_payment_occurrences__occurrence_id__receipt_file_put"];
+        post?: never;
+        /** Удаление файла чека */
+        delete: operations["delete_receipt_file_api_v1_payment_occurrences__occurrence_id__receipt_file_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/payments/summary": {
         parameters: {
             query?: never;
@@ -188,6 +293,66 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Список категорий платежей */
+        get: operations["list_categories_api_v1_categories_get"];
+        put?: never;
+        /** Создание категории */
+        post: operations["create_category_api_v1_categories_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/categories/{category_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Удаление категории
+         * @description Платежи из категории не удаляются — они остаются без категории.
+         */
+        delete: operations["delete_category_api_v1_categories__category_id__delete"];
+        options?: never;
+        head?: never;
+        /** Переименование категории */
+        patch: operations["rename_category_api_v1_categories__category_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Получение настроек */
+        get: operations["get_settings_api_v1_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Изменение настроек: окно напоминания, загрузка файлов чеков
+         * @description reminder_days_before — за сколько дней до срока напоминать о платежах без своего окна (3–365). Если окно увеличили, напоминания о попавших в него сроках уйдут при ближайшей проверке. uploads_enabled — можно ли прикреплять файлы чеков (уже прикреплённые остаются доступны).
+         */
+        patch: operations["update_settings_api_v1_settings_patch"];
         trace?: never;
     };
     "/api/v1/users": {
@@ -273,6 +438,75 @@ export interface components {
             } | null;
             /** Ip */
             ip: string | null;
+        };
+        /** BulkCategory */
+        BulkCategory: {
+            /**
+             * Ids
+             * @description ID регулярных платежей
+             * @example [
+             *       1,
+             *       2,
+             *       3
+             *     ]
+             */
+            ids: number[];
+            /**
+             * Category Id
+             * @description Категория; null — убрать из категории
+             */
+            category_id: number | null;
+        };
+        /** BulkIds */
+        BulkIds: {
+            /**
+             * Ids
+             * @description ID регулярных платежей
+             * @example [
+             *       1,
+             *       2,
+             *       3
+             *     ]
+             */
+            ids: number[];
+        };
+        /** BulkResultOut */
+        BulkResultOut: {
+            /**
+             * Changed
+             * @description Платежи, которые изменились этим запросом
+             */
+            changed: number[];
+            /**
+             * Unchanged
+             * @description Уже были в нужном состоянии — ничего не изменилось
+             */
+            unchanged: number[];
+        };
+        /** CategoryIn */
+        CategoryIn: {
+            /**
+             * Name
+             * @example Серверы
+             */
+            name: string;
+        };
+        /** CategoryOut */
+        CategoryOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Payments Count
+             * @description Сколько активных платежей в категории
+             */
+            payments_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /**
          * Currency
@@ -409,8 +643,18 @@ export interface components {
             today: string;
             /** Timezone */
             timezone: string;
-            /** Reminder Days Before */
+            /**
+             * Reminder Days Before
+             * @description Общее окно напоминания (см. GET /settings)
+             */
             reminder_days_before: number;
+            /**
+             * Uploads Enabled
+             * @description Можно ли прикреплять файлы чеков
+             */
+            uploads_enabled: boolean;
+            /** Upload Max Mb */
+            upload_max_mb: number;
             /** Currencies */
             currencies: components["schemas"]["Currency"][];
             /** Frequencies */
@@ -484,6 +728,14 @@ export interface components {
             reminder_sent_at: string | null;
             /** Receipt Url */
             receipt_url: string | null;
+            /** @description Прикреплённый файл чека */
+            receipt_file: components["schemas"]["ReceiptFileOut"] | null;
+            /** Comment */
+            comment: string | null;
+            /** Category Id */
+            category_id: number | null;
+            /** Category Name */
+            category_name: string | null;
             /**
              * Payment Active
              * @description false — регулярный платёж прекращён (период остаётся в истории)
@@ -526,6 +778,11 @@ export interface components {
              * @description Ссылка на чек или платёжку (только http/https)
              */
             receipt_url?: string | null;
+            /**
+             * Comment
+             * @description Комментарий к оплате; пустая строка или null — убрать
+             */
+            comment?: string | null;
         };
         /** Page[AuditOut] */
         Page_AuditOut_: {
@@ -559,6 +816,38 @@ export interface components {
              */
             label: string | null;
         };
+        /** ReceiptFileOut */
+        ReceiptFileOut: {
+            /** Filename */
+            filename: string;
+            /**
+             * Content Type
+             * @enum {string}
+             */
+            content_type: "application/pdf" | "image/png" | "image/jpeg" | "image/webp";
+            /**
+             * Size
+             * @description Размер в байтах
+             */
+            size: number;
+            /**
+             * Sha256
+             * @description Отпечаток содержимого — по нему журнал понимает, тот ли это файл
+             */
+            sha256: string;
+            /**
+             * Uploaded At
+             * Format: date-time
+             */
+            uploaded_at: string;
+            /** Uploaded By */
+            uploaded_by: string | null;
+            /**
+             * Url
+             * @description Открыть файл: GET с той же авторизацией
+             */
+            url: string;
+        };
         /** RecurringPaymentCreate */
         RecurringPaymentCreate: {
             /**
@@ -581,6 +870,16 @@ export interface components {
             next_due_date: string;
             /** @default monthly */
             frequency: components["schemas"]["Frequency"];
+            /**
+             * Remind Days
+             * @description Своё окно напоминания в днях; не задано — общая настройка (GET /settings)
+             */
+            remind_days?: number | null;
+            /**
+             * Category Id
+             * @description Категория (GET /categories); не задано — без категории
+             */
+            category_id?: number | null;
         };
         /** RecurringPaymentOut */
         RecurringPaymentOut: {
@@ -610,10 +909,32 @@ export interface components {
             next_occurrence: components["schemas"]["OccurrenceBrief"] | null;
             /** Overdue Count */
             overdue_count: number;
+            /**
+             * Remind Days
+             * @description Своё окно напоминания в днях; null — действует общая настройка
+             */
+            remind_days: number | null;
+            /**
+             * Remind Days Effective
+             * @description За сколько дней до срока придёт напоминание по этому платежу
+             */
+            remind_days_effective: number;
+            /** Category Id */
+            category_id: number | null;
+            /** Category Name */
+            category_name: string | null;
             /** Is Active */
             is_active: boolean;
-            /** Deleted At */
+            /**
+             * Deleted At
+             * @description Когда платёж прекращён; null — активен
+             */
             deleted_at: string | null;
+            /**
+             * Resumed On
+             * @description Когда платёж возобновили после прекращения
+             */
+            resumed_on: string | null;
             /**
              * Created At
              * Format: date-time
@@ -638,6 +959,46 @@ export interface components {
              */
             next_due_date?: string | null;
             frequency?: components["schemas"]["Frequency"] | null;
+            /**
+             * Remind Days
+             * @description Своё окно напоминания; null — общая настройка
+             */
+            remind_days?: number | null;
+            /**
+             * Category Id
+             * @description Категория; null — без категории. Её можно менять и у прекращённого платежа
+             */
+            category_id?: number | null;
+        };
+        /** SettingsOut */
+        SettingsOut: {
+            /**
+             * Reminder Days Before
+             * @description За сколько дней до срока напоминать — для платежей, у которых не задано своё окно
+             */
+            reminder_days_before: number;
+            /**
+             * Reminder Days Default
+             * @description Значение по умолчанию из .env (REMINDER_DAYS_BEFORE)
+             */
+            reminder_days_default: number;
+            /**
+             * Uploads Enabled
+             * @description Можно ли прикреплять файлы чеков
+             */
+            uploads_enabled: boolean;
+            /**
+             * Upload Max Mb
+             * @description Предельный размер файла чека, МБ (UPLOAD_MAX_MB в .env)
+             */
+            upload_max_mb: number;
+        };
+        /** SettingsUpdate */
+        SettingsUpdate: {
+            /** Reminder Days Before */
+            reminder_days_before?: number | null;
+            /** Uploads Enabled */
+            uploads_enabled?: boolean | null;
         };
         /**
          * SortOrder
@@ -1114,6 +1475,280 @@ export interface operations {
             };
         };
     };
+    bulk_stop_recurring_api_v1_recurring_payments_bulk_stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkIds"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkResultOut"];
+                };
+            };
+            /** @description Не авторизован */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Не найдено */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Конфликт */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Некорректные данные */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    bulk_restore_recurring_api_v1_recurring_payments_bulk_restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkIds"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkResultOut"];
+                };
+            };
+            /** @description Не авторизован */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Не найдено */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Конфликт */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Некорректные данные */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    bulk_category_recurring_api_v1_recurring_payments_bulk_category_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkCategory"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkResultOut"];
+                };
+            };
+            /** @description Не авторизован */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Не найдено */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Конфликт */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Некорректные данные */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    restore_recurring_api_v1_recurring_payments__payment_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                payment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringPaymentOut"];
+                };
+            };
+            /** @description Не авторизован */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Не найдено */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Конфликт */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Некорректные данные */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_recurring_api_v1_recurring_payments__payment_id__get: {
         parameters: {
             query?: never;
@@ -1332,6 +1967,8 @@ export interface operations {
                 to?: string | null;
                 /** @description Включать периоды прекращённых платежей */
                 include_inactive?: boolean;
+                /** @description Категория; 0 — без категории */
+                category_id?: number | null;
                 sort?: components["schemas"]["SortOrder"];
                 limit?: number;
                 offset?: number;
@@ -1536,6 +2173,237 @@ export interface operations {
             };
         };
     };
+    download_receipt_file_api_v1_payment_occurrences__occurrence_id__receipt_file_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                occurrence_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Файл */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": unknown;
+                    "image/png": unknown;
+                    "image/jpeg": unknown;
+                    "image/webp": unknown;
+                };
+            };
+            /** @description Не авторизован */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Не найдено */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Конфликт */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Некорректные данные */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    upload_receipt_file_api_v1_payment_occurrences__occurrence_id__receipt_file_put: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Имя файла с расширением, percent-encoded */
+                "x-file-name": string;
+            };
+            path: {
+                occurrence_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+                "application/pdf": string;
+                "image/png": string;
+                "image/jpeg": string;
+                "image/webp": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OccurrenceOut"];
+                };
+            };
+            /** @description Не авторизован */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Не найдено */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Конфликт */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Файл слишком большой */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Формат не разрешён */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Некорректные данные */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_receipt_file_api_v1_payment_occurrences__occurrence_id__receipt_file_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                occurrence_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Не авторизован */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Не найдено */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Конфликт */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Некорректные данные */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_summary_api_v1_payments_summary_get: {
         parameters: {
             query?: {
@@ -1623,6 +2491,410 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ForecastOut"];
+                };
+            };
+            /** @description Не авторизован */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Не найдено */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Конфликт */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Некорректные данные */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_categories_api_v1_categories_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryOut"][];
+                };
+            };
+            /** @description Не авторизован */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Не найдено */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Конфликт */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Некорректные данные */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_category_api_v1_categories_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryOut"];
+                };
+            };
+            /** @description Не авторизован */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Не найдено */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Конфликт */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Некорректные данные */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_category_api_v1_categories__category_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                category_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Не авторизован */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Не найдено */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Конфликт */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Некорректные данные */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rename_category_api_v1_categories__category_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                category_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryOut"];
+                };
+            };
+            /** @description Не авторизован */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Не найдено */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Конфликт */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Некорректные данные */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsOut"];
+                };
+            };
+            /** @description Не авторизован */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Не найдено */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Конфликт */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Некорректные данные */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_settings_api_v1_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsOut"];
                 };
             };
             /** @description Не авторизован */

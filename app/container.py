@@ -47,7 +47,7 @@ def build_container(settings: Settings, *, clock: Clock | None = None, notifier:
         session_factory=session_factory,
         clock=clock,
         notifier=notifier,
-        remind_days=settings.reminder_days_before,
+        default_remind_days=settings.reminder_days_before,
         interval_seconds=settings.reminder_check_interval_seconds,
     )
     container = Container(

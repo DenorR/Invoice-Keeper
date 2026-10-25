@@ -10,6 +10,7 @@ export default defineConfig({
     chunkSizeWarningLimit: 1500,
   },
   server: {
+    host: "127.0.0.1", // IPv4: на Windows «localhost» иначе может достаться только IPv6
     port: 5173,
     proxy: { "/api": "http://localhost:8080" },
   },

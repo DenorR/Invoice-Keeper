@@ -8,6 +8,7 @@ from app.api.deps import SESSION_COOKIE, ContainerDep, CurrentUser, DbDep, actor
 from app.schemas import LoginRequest, LoginResponse, MetaOut, TelegramStatus, UserOut
 from app.domain.money import Currency
 from app.domain.schedule import Frequency
+from app.services import app_settings
 from app.services import auth as auth_service
 
 public_router = APIRouter(prefix="/auth", tags=["Авторизация"])
@@ -67,12 +68,14 @@ def logout(request: Request, user: CurrentUser, db: DbDep):
 
 
 @meta_router.get("/meta", response_model=MetaOut, summary="Параметры системы для интерфейса")
-def meta(user: CurrentUser, container: ContainerDep):
+def meta(user: CurrentUser, db: DbDep, container: ContainerDep):
     settings = container.settings
     return MetaOut(
         today=container.clock.today(),
         timezone=settings.app_timezone,
-        reminder_days_before=settings.reminder_days_before,
+        reminder_days_before=app_settings.reminder_days(db, settings.reminder_days_before),
+        uploads_enabled=app_settings.uploads_enabled(db),
+        upload_max_mb=settings.upload_max_mb,
         currencies=list(Currency),
         frequencies=list(Frequency),
         telegram=TelegramStatus(

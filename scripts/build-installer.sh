@@ -16,7 +16,7 @@ if [[ ${1:-} == --build-web ]]; then (cd web && npm run build); fi
 [[ -f app/static/index.html ]] || { echo "Панель не собрана: cd web && npm run build" >&2; exit 1; }
 
 FILES=(app migrations installer deploy alembic.ini requirements.txt openapi.yaml Dockerfile .dockerignore
-       docker-compose.yml docker-compose.prod.yml docker-compose.ipv6.yml .env.example README.md)
+       docker-compose.yml docker-compose.prod.yml docker-compose.ipv6.yml .env.example README.md docs)
 
 STAGE=$(mktemp -d)
 PAYLOAD=$(mktemp)

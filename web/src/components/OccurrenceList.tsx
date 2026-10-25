@@ -1,194 +1,161 @@
-import { Badge, Card, Group, Skeleton, Stack, Table, Text, Tooltip } from "@mantine/core";
+import { ActionIcon, Skeleton, Tooltip } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
-import { IconBrandTelegram, IconInbox } from "@tabler/icons-react";
+import { IconBrandTelegram, IconExternalLink, IconFileTypePdf, IconInbox, IconMessage, IconPhoto } from "@tabler/icons-react";
+import dayjs from "dayjs";
 import type { ReactNode } from "react";
 import type { Occurrence } from "../api/client";
-import { formatDate, weekday } from "../lib/format";
-import { Money, StatusBadge } from "./common";
-import { OccurrenceActions } from "./OccurrenceActions";
+import { fileExt, formatBytes, formatDate, pluralDays, safeHttpUrl, weekday } from "../lib/format";
+import { EmptyState, Money, StatusBadge } from "./common";
+import { PayCheck } from "./OccurrenceActions";
 
-export type OccurrenceGroup = { key: string; title: ReactNode; items: Occurrence[] };
-
-type Props = {
-  groups: OccurrenceGroup[];
-  loading?: boolean;
-  /** Колонки «Дата оплаты» и «Отметил» — для истории. */
-  showPaidInfo?: boolean;
-  empty?: ReactNode;
-};
+export type OccurrenceGroup = { key: string; title?: string; items: Occurrence[] };
 
 export function useIsMobile(): boolean {
   return useMediaQuery("(max-width: 48em)") ?? false;
 }
 
-function DueDate({ o }: { o: Occurrence }) {
-  return (
-    <Text size="sm" className="nowrap tabular">
-      {formatDate(o.due_date)}{" "}
-      <Text span size="xs" c="dimmed">
-        {weekday(o.due_date)}
-      </Text>
-    </Text>
-  );
+const MONTHS_GEN = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+
+export function shortDate(iso: string): string {
+  const d = dayjs(iso);
+  return `${d.date()} ${MONTHS_GEN[d.month()]}, ${weekday(iso)}`;
 }
 
-function NameCell({ o }: { o: Occurrence }) {
-  return (
-    <Group gap={6} wrap="nowrap">
-      <Text size="sm" fw={600} lineClamp={2}>
-        {o.name}
-      </Text>
-      {!o.payment_active && (
-        <Badge size="xs" variant="outline" color="gray">
-          прекращён
-        </Badge>
-      )}
-      {o.reminder_sent_at && o.status === "unpaid" && (
-        <Tooltip label={`Напоминание отправлено в Telegram ${formatDate(o.reminder_sent_at)}`}>
-          <IconBrandTelegram size={16} color="var(--mantine-color-blue-5)" style={{ flexShrink: 0 }} />
-        </Tooltip>
-      )}
-    </Group>
-  );
+/** Срок словами: «просрочено 5 дней», «сегодня», «через 2 дня». */
+function relative(o: Occurrence): ReactNode {
+  if (o.state === "overdue") return <span data-sep data-tone="red">просрочено {pluralDays(o.overdue_days)}</span>;
+  if (o.state === "due_today") return <span data-sep data-tone="today">сегодня</span>;
+  if (o.days_until_due === 1) return <span data-sep>завтра</span>;
+  if (o.days_until_due !== null && o.days_until_due !== undefined && o.days_until_due > 0) return <span data-sep>через {pluralDays(o.days_until_due)}</span>;
+  return null;
 }
 
-function PaidInfo({ o }: { o: Occurrence }) {
-  if (!o.paid_at) return null;
-  return (
-    <Text size="xs" c="dimmed">
-      Оплачено {formatDate(o.paid_at)}
-      {o.paid_by?.label ? ` · ${o.paid_by.label}` : ""}
-      {o.paid_via === "telegram" ? " · через Telegram" : ""}
-    </Text>
-  );
-}
-
-function MobileCard({ o }: { o: Occurrence }) {
-  return (
-    <Card withBorder padding="sm" radius="md" style={{ opacity: o.payment_active ? 1 : 0.65 }}>
-      <Group justify="space-between" align="flex-start" wrap="nowrap" gap="xs">
-        <NameCell o={o} />
-        <Money amount={o.amount} currency={o.currency} />
-      </Group>
-      <Group justify="space-between" mt={6} gap="xs">
-        <Text size="sm" c="dimmed" className="tabular">
-          срок {formatDate(o.due_date)}, {weekday(o.due_date)}
-        </Text>
-        <StatusBadge occurrence={o} />
-      </Group>
-      {o.paid_at && (
-        <div style={{ marginTop: 4 }}>
-          <PaidInfo o={o} />
-        </div>
-      )}
-      <Group justify="flex-end" mt="xs">
-        <OccurrenceActions occurrence={o} />
-      </Group>
-    </Card>
-  );
-}
-
-export function OccurrenceList({ groups, loading, showPaidInfo = false, empty }: Props) {
-  const isMobile = useIsMobile();
-  const total = groups.reduce((n, g) => n + g.items.length, 0);
-  const showTitles = groups.length > 1 || groups.some((g) => g.title);
-
-  if (loading) {
-    return (
-      <Stack gap="xs" p={isMobile ? 0 : "md"}>
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} h={isMobile ? 96 : 36} />
-        ))}
-      </Stack>
-    );
-  }
-
-  if (total === 0) {
+function Meta({ o, withRelative }: { o: Occurrence; withRelative: boolean }) {
+  if (o.paid_at) {
     return (
       <>
-        {empty ?? (
-          <Stack align="center" py={48} gap={4}>
-            <IconInbox size={36} color="var(--mantine-color-gray-5)" />
-            <Text fw={600}>Ничего не найдено</Text>
-          </Stack>
-        )}
+        <span>{shortDate(o.due_date)}</span>
+        <span data-sep>оплачено {formatDate(o.paid_at)}{o.paid_by?.label ? `, ${o.paid_by.label}` : ""}</span>
+        {o.paid_via === "telegram" && <IconBrandTelegram size={13} />}
+        {!o.payment_active && <span data-sep>платёж прекращён</span>}
+        <CommentPart o={o} />
       </>
     );
   }
-
-  if (isMobile) {
-    return (
-      <Stack gap="md">
-        {groups
-          .filter((g) => g.items.length)
-          .map((g) => (
-            <Stack key={g.key} gap="xs">
-              {showTitles && g.title && <div>{g.title}</div>}
-              {g.items.map((o) => (
-                <MobileCard key={o.id} o={o} />
-              ))}
-            </Stack>
-          ))}
-      </Stack>
-    );
-  }
-
-  const columns = showPaidInfo ? 7 : 5;
+  const rel = withRelative ? relative(o) : null;
   return (
-    <Table.ScrollContainer minWidth={showPaidInfo ? 880 : 640}>
-      <Table verticalSpacing="sm" highlightOnHover>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th w={130}>Срок</Table.Th>
-            <Table.Th>Платёж</Table.Th>
-            <Table.Th ta="right">Сумма</Table.Th>
-            <Table.Th>Статус</Table.Th>
-            {showPaidInfo && <Table.Th>Дата оплаты</Table.Th>}
-            {showPaidInfo && <Table.Th>Отметил</Table.Th>}
-            <Table.Th />
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {groups
-            .filter((g) => g.items.length)
-            .map((g) => [
-              showTitles && g.title ? (
-                <Table.Tr key={`group-${g.key}`} style={{ background: "var(--mantine-color-default-hover)" }}>
-                  <Table.Td colSpan={columns} py={6}>
-                    {g.title}
-                  </Table.Td>
-                </Table.Tr>
-              ) : null,
-              ...g.items.map((o) => (
-                <Table.Tr key={o.id} className={o.payment_active ? undefined : "row-muted"}>
-                  <Table.Td>
-                    <DueDate o={o} />
-                  </Table.Td>
-                  <Table.Td>
-                    <NameCell o={o} />
-                  </Table.Td>
-                  <Table.Td ta="right">
-                    <Money amount={o.amount} currency={o.currency} />
-                  </Table.Td>
-                  <Table.Td>
-                    <StatusBadge occurrence={o} />
-                  </Table.Td>
-                  {showPaidInfo && <Table.Td className="nowrap tabular">{formatDate(o.paid_at)}</Table.Td>}
-                  {showPaidInfo && (
-                    <Table.Td>
-                      <Text size="sm" c="dimmed">
-                        {o.paid_by?.label ?? "—"}
-                      </Text>
-                    </Table.Td>
-                  )}
-                  <Table.Td>
-                    <OccurrenceActions occurrence={o} compact />
-                  </Table.Td>
-                </Table.Tr>
-              )),
-            ])}
-        </Table.Tbody>
-      </Table>
-    </Table.ScrollContainer>
+    <>
+      <span>{shortDate(o.due_date)}</span>
+      {rel}
+      {!o.payment_active && <span data-sep>платёж прекращён</span>}
+      {o.reminder_sent_at && (
+        <Tooltip label={`Напоминание отправлено в Telegram ${formatDate(o.reminder_sent_at)}`}>
+          <span style={{ display: "inline-flex" }} aria-label="напоминание отправлено">
+            <IconBrandTelegram size={13} />
+          </span>
+        </Tooltip>
+      )}
+    </>
+  );
+}
+
+/** Комментарий к оплате — в конце подписи; длинный сокращается, целиком — во всплывающей подсказке. */
+function CommentPart({ o }: { o: Occurrence }) {
+  if (!o.comment) return null;
+  return (
+    <Tooltip label={o.comment} multiline maw={320} style={{ whiteSpace: "pre-wrap" }}>
+      <span data-sep className="ik-item-comment">
+        <IconMessage size={13} />
+        {o.comment.replace(/\s+/g, " ")}
+      </span>
+    </Tooltip>
+  );
+}
+
+/**
+ * Чек к оплате — между суммой и статусом: ярлык файла с расширением («PDF», «JPG») и значок ссылки.
+ * Открываются прямо из строки; имя и размер файла — во всплывающей подсказке.
+ */
+export function ReceiptLinks({ o }: { o: Occurrence }) {
+  const url = safeHttpUrl(o.receipt_url);
+  const file = o.receipt_file;
+  // контейнер есть всегда — чтобы у всех строк была одна сетка и суммы стояли ровным столбцом
+  return (
+    <div className="ik-item-receipts">
+      {file && (
+        <Tooltip label={`Чек: ${file.filename} · ${formatBytes(file.size)}`}>
+          <a className="ik-file-chip" href={file.url} target="_blank" rel="noopener" aria-label={`Открыть чек ${file.filename}`}>
+            {file.content_type === "application/pdf" ? <IconFileTypePdf size={15} /> : <IconPhoto size={15} />}
+            {fileExt(file.filename, file.content_type)}
+          </a>
+        </Tooltip>
+      )}
+      {url && (
+        <Tooltip label="Ссылка на чек">
+          <ActionIcon component="a" href={url} target="_blank" rel="noopener noreferrer" variant="subtle" color="gray" size={30} aria-label="Открыть ссылку на чек">
+            <IconExternalLink size={17} />
+          </ActionIcon>
+        </Tooltip>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Строка периода: кружок-отметка · название и срок · сумма [· статус].
+ * Статус показываем, только когда его не видно из контекста (например, в общем списке на странице «Платежи»).
+ */
+export function OccurrenceRow({ o, showStatus = false }: { o: Occurrence; showStatus?: boolean }) {
+  return (
+    <div className="ik-item" data-status={showStatus || undefined} data-inactive={o.payment_active ? undefined : ""}>
+      <PayCheck occurrence={o} />
+      <div className="ik-item-main" style={{ minWidth: 0 }}>
+        <div className="ik-item-title" title={o.name}>
+          {o.name}
+        </div>
+        <div className="ik-item-meta">
+          <Meta o={o} withRelative={!showStatus} />
+        </div>
+      </div>
+      <div className="ik-item-amount">
+        <Money amount={o.amount} currency={o.currency} fw={650} />
+      </div>
+      <ReceiptLinks o={o} />
+      {showStatus && (
+        <div className="ik-item-status">
+          <StatusBadge occurrence={o} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function RowsSkeleton({ count = 4 }: { count?: number }) {
+  return (
+    <div className="ik-list">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="ik-item">
+          <Skeleton h={24} w={24} circle />
+          <div>
+            <Skeleton h={12} w="55%" mb={8} />
+            <Skeleton h={10} w="35%" />
+          </div>
+          <Skeleton h={12} w={72} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Плоский список строк (страница «Платежи»). */
+export function OccurrenceList({ items, loading, empty }: { items: Occurrence[]; loading?: boolean; empty?: ReactNode }) {
+  if (loading) return <RowsSkeleton />;
+  if (!items.length) return <>{empty ?? <EmptyState icon={<IconInbox size={22} />} title="Ничего не найдено" />}</>;
+  return (
+    <div className="ik-list" style={{ padding: 6 }}>
+      {items.map((o) => (
+        <OccurrenceRow key={o.id} o={o} showStatus />
+      ))}
+    </div>
   );
 }

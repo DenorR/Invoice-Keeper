@@ -41,8 +41,13 @@ class Settings(BaseSettings):
     # Публичный адрес панели (https://…) — для кнопки «Открыть в панели» в сообщениях бота
     public_url: str | None = None
 
-    reminder_days_before: int = Field(default=3, ge=3, le=60)
+    # Общее окно напоминания по умолчанию. Администратор меняет его в панели («Настройки»),
+    # а у отдельного платежа можно задать своё.
+    reminder_days_before: int = Field(default=3, ge=3, le=365)
     reminder_check_interval_seconds: int = Field(default=60, ge=5)
+
+    # Предельный размер файла чека, МБ. Загрузку можно отключить в панели («Настройки»).
+    upload_max_mb: int = Field(default=10, ge=1, le=50)
 
     seed_demo_data: bool = True
     # Пароли демо-пользователей. По умолчанию — публичные из README (для локального запуска);

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from app.api import audit, auth, payments, users
+from app.api import audit, auth, categories, payments, settings, users
 from app.api.deps import get_current_user
 from app.schemas import ErrorResponse
 
@@ -27,6 +27,8 @@ def build_api_router() -> APIRouter:
     protected.include_router(payments.recurring_router)
     protected.include_router(payments.occurrences_router)
     protected.include_router(payments.summary_router)
+    protected.include_router(categories.router)
+    protected.include_router(settings.router)
     protected.include_router(users.router)
     protected.include_router(audit.router)
     api.include_router(protected)

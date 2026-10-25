@@ -30,7 +30,10 @@ def _insert_ignore(db: Session, rows: list[dict]) -> None:
 
 
 def generate_for_payment(db: Session, payment: RecurringPayment, today: date, remind_days: int) -> int:
-    """Создаёт недостающие периоды платежа. Идемпотентно. Возвращает число новых периодов."""
+    """Создаёт недостающие периоды платежа. Идемпотентно. Возвращает число новых периодов.
+
+    remind_days — общее окно напоминания; если у платежа задано своё, берётся оно.
+    """
     if not payment.is_active:
         return 0
     rows = db.execute(
@@ -39,14 +42,15 @@ def generate_for_payment(db: Session, payment: RecurringPayment, today: date, re
         )
     ).all()
     existing = {due: paid_at for due, paid_at in rows}
-    horizon = today + timedelta(days=remind_days)
+    horizon = today + timedelta(days=payment.remind_days_or(remind_days))
     wanted = due_dates_to_ensure(
         payment.anchor_date,
         Frequency(payment.frequency),
         horizon,
         is_paid=lambda due: existing.get(due) is not None,
     )
-    missing = [due for due in wanted if due not in existing]
+    # Пока платёж был прекращён, сроки не наступали — после возобновления график идёт с даты возобновления.
+    missing = [due for due in wanted if due not in existing and (payment.resumed_on is None or due >= payment.resumed_on)]
     _insert_ignore(
         db,
         [
@@ -88,6 +92,7 @@ class OccurrenceFilter:
     date_from: date | None = None
     date_to: date | None = None
     include_inactive: bool = True
+    category_id: int | None = None  # 0 — без категории
 
 
 def overdue_condition(today: date):
@@ -121,6 +126,10 @@ def list_occurrences(
         query = query.where(~overdue_condition(today))
     if flt.currency:
         query = query.where(PaymentOccurrence.currency == flt.currency)
+    if flt.category_id == 0:
+        query = query.where(RecurringPayment.category_id.is_(None))
+    elif flt.category_id is not None:
+        query = query.where(RecurringPayment.category_id == flt.category_id)
     if flt.recurring_payment_id is not None:
         query = query.where(PaymentOccurrence.recurring_payment_id == flt.recurring_payment_id)
     if flt.date_from:
@@ -195,6 +204,7 @@ def update_occurrence(
     now: datetime,
     remind_days: int,
     actor: Actor,
+    comment: str | None = None,
 ) -> PaymentOccurrence:
     occurrence = get_occurrence(db, occurrence_id)
     if not fields:
@@ -216,6 +226,13 @@ def update_occurrence(
     if "receipt_url" in fields and receipt_url != occurrence.receipt_url:
         occurrence.receipt_url = receipt_url
         audit.record(db, actor, "occurrence.receipt", "payment_occurrence", occurrence.id, {"url": receipt_url})
+
+    if "comment" in fields:
+        comment = comment or None  # пустая строка — убрать комментарий
+        if comment != occurrence.comment:
+            occurrence.comment = comment
+            audit.record(db, actor, "occurrence.comment", "payment_occurrence", occurrence.id,
+                         {"due_date": occurrence.due_date.isoformat(), "comment": comment})
 
     generate_for_payment(db, occurrence.recurring_payment, today, remind_days)
     db.flush()

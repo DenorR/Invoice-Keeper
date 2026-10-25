@@ -1,7 +1,8 @@
 """Напоминания о платежах.
 
-Каждый неоплаченный период напоминается ровно один раз — не позже чем за
-REMINDER_DAYS_BEFORE дней до срока (или сразу, если платёж добавили позже).
+Каждый неоплаченный период напоминается ровно один раз — не позже чем за N дней
+до срока (или сразу, если платёж добавили позже). N — своё окно платежа, если оно задано,
+иначе общая настройка из панели (по умолчанию REMINDER_DAYS_BEFORE из .env).
 Защита от дублей — атомарный «захват» периода в БД до отправки:
 UPDATE … SET reminder_sent_at = now WHERE reminder_sent_at IS NULL.
 """
@@ -20,9 +21,12 @@ from sqlalchemy.orm import Session, contains_eager, sessionmaker
 
 from app.domain.dates import Clock
 from app.models import PaymentOccurrence, RecurringPayment
-from app.services import audit
+from app.services import app_settings, audit
 from app.services.audit import Actor
 from app.services.occurrences import generate_all
+
+# Дальше этого окна напоминание не может быть ни у одного платежа (см. RemindDays в схемах API)
+MAX_REMIND_DAYS = 365
 
 log = logging.getLogger(__name__)
 
@@ -103,13 +107,13 @@ class ReminderService:
         session_factory: sessionmaker,
         clock: Clock,
         notifier: Notifier,
-        remind_days: int,
+        default_remind_days: int,
         interval_seconds: int,
     ):
         self.session_factory = session_factory
         self.clock = clock
         self.notifier = notifier
-        self.remind_days = remind_days
+        self.default_remind_days = default_remind_days
         self.interval_seconds = interval_seconds
         self._lock = asyncio.Lock()
         self._wake = asyncio.Event()
@@ -147,14 +151,15 @@ class ReminderService:
         async with self._lock:
             today = self.clock.today()
             with self.session_factory() as db:
-                generate_all(db, today, self.remind_days)
+                remind_days = app_settings.reminder_days(db, self.default_remind_days)
+                generate_all(db, today, remind_days)
                 db.commit()
 
             if not self.notifier.enabled:
                 return 0
 
             sent = 0
-            for payment_id, payment_name, occurrence_ids in self._candidates(today):
+            for payment_id, payment_name, occurrence_ids in self._candidates(today, remind_days):
                 claimed = self._claim(occurrence_ids)
                 if not claimed:
                     continue
@@ -179,8 +184,8 @@ class ReminderService:
                 sent += 1
             return sent
 
-    def _candidates(self, today: date) -> list[tuple[int, str, list[int]]]:
-        horizon = today + timedelta(days=self.remind_days)
+    def _candidates(self, today: date, remind_days: int) -> list[tuple[int, str, list[int]]]:
+        horizon = today + timedelta(days=MAX_REMIND_DAYS)
         with self.session_factory() as db:
             rows = db.scalars(
                 select(PaymentOccurrence)
@@ -194,6 +199,11 @@ class ReminderService:
                 )
                 .order_by(PaymentOccurrence.recurring_payment_id, PaymentOccurrence.due_date)
             ).unique().all()
+            # окно у каждого платежа своё (или общее): отсекаем то, о чём напоминать ещё рано
+            rows = [
+                o for o in rows
+                if o.due_date <= today + timedelta(days=o.recurring_payment.remind_days_or(remind_days))
+            ]
             # Несколько периодов одного платежа (например, заведён задним числом) — одним сообщением.
             return [
                 (payment_id, group[0].recurring_payment.name, [o.id for o in group])
