@@ -32,7 +32,7 @@ import { EASE_OUT, popFrom } from "../theme";
 type Item = Schemas["ForecastItemOut"];
 const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 const MONTHS = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"];
-const MAX_CHIPS = 3;
+const MAX_CHIPS = 2;
 
 function useForecast(from: string, to: string) {
   return useQuery({

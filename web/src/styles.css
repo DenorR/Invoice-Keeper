@@ -648,7 +648,7 @@ a.ik-stat:active { transform: scale(0.99); }
      раздвигает её и залезает на соседний день (в некоторых браузерах кнопка в сетке не сжимается) */
   min-width: 0;
   overflow: hidden;
-  padding: 8px;
+  padding: 8px 6px;
   text-align: left;
   border-right: 1px solid var(--ik-border);
   border-bottom: 1px solid var(--ik-border);
@@ -688,30 +688,36 @@ a.ik-stat:active { transform: scale(0.99); }
   font-weight: 700;
 }
 
+/* плашка в две строки на всю ширину ячейки: точка и назначение сверху, сумма под назначением */
 .cal-chip {
-  display: flex;
+  display: grid;
+  grid-template-columns: 6px minmax(0, 1fr);
   align-items: center;
-  gap: 6px;
+  column-gap: 6px;
+  row-gap: 1px;
+  width: 100%;
   min-width: 0;
-  max-width: 100%;
-  padding: 3px 6px;
-  border-radius: 6px;
+  padding: 4px 7px;
+  border-radius: 7px;
   font-size: 12px;
   line-height: 1.3;
   background: var(--ik-hover);
 }
 .cal-chip::before {
   content: "";
-  flex-shrink: 0;
+  grid-column: 1;
+  grid-row: 1;
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--chip-color, var(--mantine-color-gray-5));
 }
 .cal-chip[data-planned]::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--mantine-color-gray-5); }
-.cal-chip-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
-.cal-chip-amount { flex-shrink: 0; color: var(--mantine-color-dimmed); font-variant-numeric: tabular-nums; }
-.cal-more { font-size: 12px; font-weight: 600; color: var(--mantine-color-dimmed); padding-left: 6px; }
+.cal-chip-name,
+.cal-chip-amount { grid-column: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-chip-name { grid-row: 1; font-weight: 550; }
+.cal-chip-amount { grid-row: 2; font-size: 11.5px; color: var(--mantine-color-dimmed); font-variant-numeric: tabular-nums; }
+.cal-more { font-size: 12px; font-weight: 600; color: var(--mantine-color-dimmed); padding-left: 7px; }
 
 /* смена месяца: сетка въезжает со стороны, куда листаем (направление объясняет движение) */
 .cal-anim { animation: cal-in 420ms var(--ik-ease-out) both; }
