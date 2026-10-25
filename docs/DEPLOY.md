@@ -129,13 +129,25 @@ docker compose up -d --build
 
 ### Python без Docker
 
-Нужен Python **3.12+**; Node.js не нужен — собранная панель уже лежит в `app/static`.
+Нужен Python **3.12 или новее** (проверено на 3.12, 3.13, 3.14); Node.js не нужен — собранная панель уже
+лежит в `app/static`. Подробно, с установкой Python, — в [README](../README.md#вариант-2-python-без-docker).
+
+Windows (PowerShell):
+
+```powershell
+Copy-Item .env.example .env
+py -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python -m app
+```
+
+Linux и macOS:
 
 ```bash
 cp .env.example .env
-python3 -m venv .venv && source .venv/bin/activate      # Windows: py -3.12 -m venv .venv; .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python -m app
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m app
 ```
 
 При первом запуске создаётся `data/invoice-keeper.db`, применяются миграции, создаётся суперадмин из `.env`
