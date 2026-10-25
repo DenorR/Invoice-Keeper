@@ -7,7 +7,7 @@
 Администратор заводит платежи → бот заранее пишет в Telegram-чат → команда отмечает оплату
 в панели или кнопкой прямо в сообщении → просрочки и итоги по валютам видны сразу.
 
-![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-REST%20%2Fapi%2Fv1-009688?logo=fastapi&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)
@@ -105,7 +105,7 @@ flowchart LR
 
 | Слой | Технологии |
 |---|---|
-| Сервер | **Python 3.12**, **FastAPI**, Uvicorn, **Pydantic 2**, pydantic-settings |
+| Сервер | **Python 3.12+** (проверено на 3.12–3.14), **FastAPI**, Uvicorn, **Pydantic 2**, pydantic-settings |
 | Данные | **SQLite** (WAL), **SQLAlchemy 2.0**, **Alembic** — миграции применяются при старте |
 | Telegram | **aiogram 3**: polling, inline-кнопки, обновление отправленных сообщений |
 | Веб-панель | **React 19**, **Mantine 9**, TanStack Query 5, openapi-fetch, Vite 8, TypeScript |
@@ -125,61 +125,82 @@ flowchart LR
 
 | | Вариант 1. Docker | Вариант 2. Python, без Docker |
 |---|---|---|
-| Что нужно | Docker | Python 3.12 или новее |
-| Команд для запуска | 2 | 5 |
+| Что нужно | Docker | Python 3.12 или новее (проверено на 3.12, 3.13, 3.14) |
+| Команд для запуска | 2 | 4 |
 | Когда удобнее | Docker уже стоит или его не жалко поставить | не хочется ставить Docker |
 
-Сначала получите папку проекта: распакуйте архив `invoice-keeper-1.6.0.zip` или склонируйте репозиторий
-и откройте в ней терминал.
+### Где вводить команды
 
-```bash
-cd invoice-keeper-1.6.0          # или папка, куда склонировали репозиторий
-```
+Все команды ниже вводятся **в терминале, открытом в папке проекта** — там, где лежат `README.md`, `app`
+и `docker-compose.yml`. Сначала распакуйте архив `invoice-keeper-1.6.0.zip` (или склонируйте репозиторий),
+затем откройте в этой папке терминал:
+
+* **Windows.** Откройте папку проекта в Проводнике, щёлкните по **адресной строке** вверху окна (где путь
+  к папке), сотрите путь, напишите `powershell` и нажмите **Enter**. Откроется окно PowerShell уже в этой папке.
+  В Windows 11 можно проще: правой кнопкой по пустому месту в папке → **«Открыть в Терминале»**.
+* **macOS.** Откройте программу **Терминал**, напечатайте `cd ` (с пробелом на конце), перетащите папку
+  проекта мышью в окно терминала и нажмите **Enter**.
+* **Linux.** Правой кнопкой по пустому месту в папке → **«Открыть в терминале»**.
+
+Проверьте, что вы в нужной папке: выполните `ls` (в Windows можно `dir`) — в списке должны быть
+`README.md`, `app` и `docker-compose.yml`.
+
+**Как вводить:** по одной команде — скопировали строку, вставили в окно терминала (правая кнопка мыши
+или Ctrl+V; в терминале Linux — Ctrl+Shift+V), нажали **Enter**, дождались окончания, затем следующая.
 
 ### Вариант 1. Docker
 
-**Шаг 1. Проверьте, есть ли Docker.**
+**Шаг 1. Проверьте, есть ли Docker:**
 
 ```bash
 docker compose version
 ```
 
 Если напечаталась версия (`Docker Compose version v2…`), переходите к шагу 2.
-Если `command not found` или «не является командой» — установите Docker:
+Если ошибка «command not found» или «не является командой» — установите Docker:
 
 * **Windows 10/11.** Скачайте и установите [Docker Desktop](https://www.docker.com/products/docker-desktop/),
   при установке оставьте галочку **Use WSL 2**. Перезагрузите компьютер, запустите Docker Desktop
-  и дождитесь внизу окна статуса **Engine running**.
+  и дождитесь внизу окна статуса **Engine running**. Затем откройте терминал в папке проекта заново.
 * **macOS.** Установите [Docker Desktop](https://www.docker.com/products/docker-desktop/) для своего процессора
-  (Apple Silicon или Intel) или через Homebrew: `brew install --cask docker`. Запустите приложение Docker
-  и дождитесь, пока значок кита в строке меню перестанет мигать.
-* **Linux (Ubuntu, Debian).** Официальный скрипт установки:
+  (Apple Silicon или Intel). Запустите приложение Docker и дождитесь, пока значок кита в строке меню
+  перестанет мигать.
+* **Linux (Ubuntu, Debian).** Выполните по очереди:
 
   ```bash
   curl -fsSL https://get.docker.com | sudo sh
-  sudo usermod -aG docker $USER      # чтобы запускать docker без sudo
   ```
 
-  Выйдите из системы и войдите снова (или перезагрузитесь), чтобы права применились.
+  ```bash
+  sudo usermod -aG docker $USER
+  ```
+
+  Выйдите из системы и войдите снова (или перезагрузитесь), чтобы docker запускался без `sudo`.
 
 Снова выполните `docker compose version` — теперь должна напечататься версия.
 
-**Шаг 2. Создайте файл настроек** из примера:
+**Шаг 2. Создайте файл настроек** из примера.
+
+Windows (PowerShell):
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Linux и macOS:
 
 ```bash
 cp .env.example .env
 ```
 
-В Windows PowerShell: `Copy-Item .env.example .env`.
-
-**Шаг 3. Запустите:**
+**Шаг 3. Запустите** (одинаково везде):
 
 ```bash
 docker compose up -d --build
 ```
 
-Первый раз сборка займёт 1–2 минуты. Готово — откройте **http://localhost:8080** и войдите
-(учётные записи — [ниже](#учётные-записи)).
+Первый раз сборка займёт 1–2 минуты. Когда команда закончится, откройте в браузере **http://localhost:8080**
+и войдите (учётные записи — [ниже](#учётные-записи)).
 
 | Задача | Команда |
 |---|---|
@@ -189,79 +210,124 @@ docker compose up -d --build
 | остановить (данные сохранятся) | `docker compose down` |
 | удалить вместе с базой | `docker compose down -v` |
 
-> Порт 8080 занят другой программой? Добавьте в `.env` строку `APP_PORT=8081` и откройте http://localhost:8081.
+> Порт 8080 занят другой программой? Добавьте в файл `.env` строку `APP_PORT=8081`, выполните
+> `docker compose up -d` и откройте http://localhost:8081.
 
 ### Вариант 2. Python, без Docker
 
 Node.js **не нужен**: собранная веб-панель уже лежит в `app/static`. Всё ставится в отдельную папку `.venv`
 внутри проекта и ничего не меняет в системе.
 
-**Шаг 1. Установите Python 3.12 или новее.** Проверьте, какой уже есть:
+**Шаг 1. Проверьте Python.** Нужна версия **3.12 или новее** (3.13, 3.14 тоже подходят).
 
-```bash
-python3 --version        # Windows: py --version
+Windows — покажет все установленные версии:
+
+```powershell
+py -0
 ```
-
-Если версия ниже 3.12 или команда не найдена:
-
-* **Windows.** Скачайте установщик с [python.org/downloads](https://www.python.org/downloads/).
-  При установке **обязательно отметьте галочку «Add python.exe to PATH»**. Или одной командой
-  в PowerShell: `winget install Python.Python.3.12`. После установки откройте **новое** окно терминала.
-* **macOS.** `brew install python@3.12` (или установщик с [python.org](https://www.python.org/downloads/)).
-* **Ubuntu 24.04 и новее.** Python 3.12 уже есть, доустановите модули: `sudo apt install -y python3-venv python3-pip`.
-* **Ubuntu 22.04.** Поставьте 3.12 из PPA:
-  `sudo add-apt-repository -y ppa:deadsnakes/ppa && sudo apt install -y python3.12 python3.12-venv`,
-  а в шагах ниже вместо `python3` пишите `python3.12`.
-
-**Шаг 2. Создайте файл настроек** из примера:
-
-```bash
-cp .env.example .env              # Windows PowerShell: Copy-Item .env.example .env
-```
-
-**Шаг 3. Создайте окружение и установите зависимости** (1–2 минуты).
 
 Linux и macOS:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+python3 --version
 ```
 
-Windows (PowerShell или командная строка) — без активации окружения, чтобы не менять политику запуска скриптов:
+Если подходящей версии нет (все ниже 3.12) или команда не найдена:
+
+* **Windows.** Установите одной командой в PowerShell:
+
+  ```powershell
+  winget install -e --id Python.Python.3.12
+  ```
+
+  Или скачайте установщик с [python.org/downloads](https://www.python.org/downloads/) — при установке
+  **обязательно отметьте галочку «Add python.exe to PATH»**. После установки **закройте окно терминала
+  и откройте его в папке проекта заново**, иначе новый Python не будет виден.
+* **macOS.** Установите `brew install python@3.12` или установщик с [python.org](https://www.python.org/downloads/).
+* **Ubuntu 24.04 и новее.** Python 3.12 уже есть, доустановите модули:
+  `sudo apt install -y python3-venv python3-pip`.
+* **Ubuntu 22.04.** Поставьте 3.12:
+  `sudo add-apt-repository -y ppa:deadsnakes/ppa && sudo apt install -y python3.12 python3.12-venv`,
+  а в командах ниже вместо `python3` пишите `python3.12`.
+
+**Шаг 2. Выполните команды по очереди** — для своей системы.
+
+**Windows (PowerShell):**
 
 ```powershell
-py -3.12 -m venv .venv
+Copy-Item .env.example .env
+```
+
+```powershell
+py -m venv .venv
+```
+
+```powershell
 .venv\Scripts\python -m pip install -r requirements.txt
 ```
 
-**Шаг 4. Запустите:**
-
-```bash
-python -m app                      # Windows: .venv\Scripts\python -m app
+```powershell
+.venv\Scripts\python -m app
 ```
 
-Когда в терминале появится строка `Invoice Keeper запущен: панель http://localhost:8080/`, откройте
-**http://localhost:8080**. При первом запуске приложение само создаёт базу `data/invoice-keeper.db`,
-применяет миграции, заводит администратора из `.env` и загружает демо-данные.
-
-**Шаг 5. Остановить** — `Ctrl+C` в этом терминале. Данные остаются в `data/`.
-
-Запустить снова (зависимости ставить уже не нужно):
+**Linux и macOS:**
 
 ```bash
-source .venv/bin/activate && python -m app       # Windows: .venv\Scripts\python -m app
+cp .env.example .env
 ```
 
-| Задача | Команда |
-|---|---|
-| вернуть демо-данные в исходное состояние | `python -m app reset-db` (Windows: `.venv\Scripts\python -m app reset-db`) |
-| пустая база без демо-данных | `python -m app reset-db --empty` |
-| другой порт, если 8080 занят | в `.env` строка `PORT=8081`, затем снова запуск |
+```bash
+python3 -m venv .venv
+```
 
-> **Если что-то не так.** `No module named …` — не активировано окружение (Linux/macOS: `source .venv/bin/activate`)
-> или зависимости не установлены (шаг 3). `ADMIN_PASSWORD: Field required` — нет файла `.env` (шаг 2).
+```bash
+.venv/bin/python -m pip install -r requirements.txt
+```
+
+```bash
+.venv/bin/python -m app
+```
+
+Что делают команды: копируют файл настроек, создают папку `.venv` для библиотек, ставят библиотеки
+(1–2 минуты) и запускают приложение.
+
+**Шаг 3. Откройте панель.** Когда в терминале появится строка
+`Invoice Keeper запущен: панель http://localhost:8080/`, откройте в браузере **http://localhost:8080**.
+При первом запуске приложение само создаёт базу `data/invoice-keeper.db`, применяет миграции,
+заводит администратора из `.env` и загружает демо-данные.
+
+**Окно терминала не закрывайте**, пока пользуетесь панелью: в нём работает приложение.
+Остановить — **Ctrl+C** в этом окне. Данные сохраняются в папке `data/`.
+
+**Шаг 4. Следующие запуски** — снова откройте терминал в папке проекта и выполните только последнюю команду
+(библиотеки ставить заново не нужно).
+
+Windows:
+
+```powershell
+.venv\Scripts\python -m app
+```
+
+Linux и macOS:
+
+```bash
+.venv/bin/python -m app
+```
+
+| Задача | Windows | Linux и macOS |
+|---|---|---|
+| вернуть демо-данные | `.venv\Scripts\python -m app reset-db` | `.venv/bin/python -m app reset-db` |
+| пустая база без демо-данных | `.venv\Scripts\python -m app reset-db --empty` | `.venv/bin/python -m app reset-db --empty` |
+| другой порт, если 8080 занят | в `.env` строка `PORT=8081`, затем запуск | то же |
+
+> **Если что-то не так.**
+> `No suitable Python runtime found` — нет нужной версии Python: проверьте `py -0`, при необходимости установите
+> (шаг 1) и откройте терминал заново.
+> `Не удалось загрузить модуль ".venv"` (Windows) — папка `.venv` не создалась, потому что не сработала
+> команда `py -m venv .venv`: исправьте ошибку в ней и повторите.
+> `py` или `python3` не найден — не установлен Python или не отмечена галочка «Add to PATH» (шаг 1).
+> `No module named …` — не выполнена команда установки библиотек (`… -m pip install -r requirements.txt`).
+> `ADMIN_PASSWORD: Field required` — нет файла `.env`: выполните первую команду шага 2.
 > `address already in use` — порт занят, смените `PORT` в `.env`.
 
 ### Учётные записи
@@ -275,6 +341,26 @@ source .venv/bin/activate && python -m app       # Windows: .venv\Scripts\python
 Пользователи `user` и `accountant` — тестовые, создаются вместе с демо-данными (`app/seed.py`).
 Их пароли можно переопределить в `.env` (`DEMO_USER_PASSWORD`, `DEMO_ACCOUNTANT_PASSWORD`).
 Администратор существует только в `.env`: через панель и API его не изменить и не удалить.
+
+**Свой логин и пароль администратора.** Остановите приложение (Ctrl+C или `docker compose down`),
+откройте `.env` в текстовом редакторе (в Windows: `notepad .env`), впишите свои значения в строки
+`ADMIN_LOGIN=…` (латиница, от 3 символов) и `ADMIN_PASSWORD=…` (от 6 символов), сохраните и запустите снова.
+Администратор берётся из `.env` при каждом запуске — новые логин и пароль действуют сразу.
+
+**Тестовые данные** загружаются сами при первом запуске в пустую базу (`SEED_DEMO_DATA=true` в `.env`).
+Вернуть их в исходное состояние (всё, что вы добавили сами, удалится):
+
+| Как запускали | Команда |
+|---|---|
+| Docker (приложение запущено) | `docker compose exec app python -m app reset-db` |
+| Python, Windows | остановить (Ctrl+C) → `.venv\Scripts\python -m app reset-db` → снова `.venv\Scripts\python -m app` |
+| Python, Linux и macOS | остановить (Ctrl+C) → `.venv/bin/python -m app reset-db` → снова `.venv/bin/python -m app` |
+
+Пустая база без демо-данных — та же команда с `--empty`.
+
+> **Адрес `0.0.0.0:8080` в журнале** — не адрес для браузера: так сервер сообщает, что слушает порт 8080
+> на всех сетевых интерфейсах. Открывайте **http://localhost:8080**. Чтобы панель не была видна
+> с других компьютеров в сети, добавьте в `.env` строку `HOST=127.0.0.1` (только для запуска без Docker).
 
 ---
 
